@@ -1,4 +1,4 @@
-name: Build Car Launcher Universal v3 Panoramic
+name: Complete UI Redesign - Car Launcher v4.0
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Generate Panoramic Cockpit Architecture (v3.0)
+      - name: Generate Complete 25-Screen UI Architecture
         run: |
           rm -rf app build.gradle.kts settings.gradle.kts gradle.properties
           BASE="app/src/main/java/com/universal/carlauncher"
@@ -33,6 +33,7 @@ jobs:
           mkdir -p "$BASE/domain/islamic"
           mkdir -p "$BASE/ui/navigation"
           mkdir -p "$BASE/ui/screens"
+          mkdir -p "$BASE/ui/preview"
 
           cat << 'EOF' > settings.gradle.kts
           pluginManagement {
@@ -82,8 +83,8 @@ jobs:
                   applicationId = "com.universal.carlauncher"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 3
-                  versionName = "3.0.0-PanoramicEdition"
+                  versionCode = 4
+                  versionName = "4.0.0-CompleteUIRedesign"
               }
               buildTypes {
                   debug { isMinifyEnabled = false }
@@ -102,6 +103,8 @@ jobs:
               implementation(platform("androidx.compose:compose-bom:2024.10.01"))
               implementation("androidx.compose.ui:ui")
               implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.ui:ui-tooling-preview")
+              debugImplementation("androidx.compose.ui:ui-tooling")
               implementation("androidx.compose.material3:material3")
               implementation("androidx.compose.material:material-icons-extended")
           }
@@ -121,6 +124,7 @@ jobs:
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
               <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+              <uses-permission android:name="android.permission.READ_CONTACTS" />
               <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
                   tools:ignore="QueryAllPackagesPermission" />
 
@@ -157,7 +161,7 @@ jobs:
           </manifest>
           EOF
 
-          # Design Tokens
+          # 1. DesignTokens.kt
           cat << 'EOF' > "$BASE/core/designsystem/DesignTokens.kt"
           package com.universal.carlauncher.core.designsystem
 
@@ -166,6 +170,7 @@ jobs:
 
           enum class CockpitThemePreset(
               val titleAr: String,
+              val subtitleAr: String,
               val background: Color,
               val surface: Color,
               val card: Color,
@@ -175,7 +180,8 @@ jobs:
               val border: Color
           ) {
               PANORAMIC_TEAL(
-                  titleAr = "بانورامي تيفاني (الأصلي)",
+                  titleAr = "الهوية البانورامية (الأصلي)",
+                  subtitleAr = "تيفاني داكن مع لمسات ذهبية وطريق بانورامي",
                   background = Color(0xFF061520),
                   surface = Color(0xFF0A2130),
                   card = Color(0xFF0D2638),
@@ -184,8 +190,9 @@ jobs:
                   secondary = Color(0xFFF59E0B),
                   border = Color(0xFF285973)
               ),
-              MERCEDES_OBSIDIAN(
-                  titleAr = "مرسيدس ليل داكن",
+              MERCEDES_MBUX(
+                  titleAr = "مرسيدس MBUX Hyperscreen",
+                  subtitleAr = "أسود أوبسيديان مع أزرق سيان محيطي",
                   background = Color(0xFF05070B),
                   surface = Color(0xFF0C1018),
                   card = Color(0xFF131926),
@@ -194,8 +201,9 @@ jobs:
                   secondary = Color(0xFFF59E0B),
                   border = Color(0xFF233047)
               ),
-              BMW_M_PERFORMANCE(
-                  titleAr = "بي إم دبليو رياضي",
+              BMW_IDRIVE_M(
+                  titleAr = "بي إم دبليو iDrive M",
+                  subtitleAr = "كحلي رياضي مع مؤشرات M الحمراء والزرقاء",
                   background = Color(0xFF07080C),
                   surface = Color(0xFF10131C),
                   card = Color(0xFF171C29),
@@ -205,14 +213,26 @@ jobs:
                   border = Color(0xFF2D3748)
               ),
               AUDI_VIRTUAL_COCKPIT(
-                  titleAr = "أودي قمرة افتراضية",
+                  titleAr = "أودي Virtual Cockpit",
+                  subtitleAr = "رمادي كربوني مع لمسات رياضية",
                   background = Color(0xFF08090A),
                   surface = Color(0xFF121417),
                   card = Color(0xFF1A1D22),
                   cardElevated = Color(0xFF242930),
-                  primary = Color(0xFF00F5D4),
+                  primary = Color(0xFFE11D48),
                   secondary = Color(0xFFF59E0B),
                   border = Color(0xFF2E343D)
+              ),
+              PORSCHE_TAYCAN(
+                  titleAr = "بورش Taycan Cockpit",
+                  subtitleAr = "أخضر زمردي داكن مع نيون ثلجي",
+                  background = Color(0xFF040A0E),
+                  surface = Color(0xFF0A161F),
+                  card = Color(0xFF102230),
+                  cardElevated = Color(0xFF173145),
+                  primary = Color(0xFF00F5D4),
+                  secondary = Color(0xFFF59E0B),
+                  border = Color(0xFF1E425E)
               )
           }
 
@@ -230,17 +250,2873 @@ jobs:
 
               val RadiusS = 10.dp
               val RadiusM = 16.dp
-              val RadiusL = 24.dp
+              val RadiusL = 22.dp
               val RadiusPill = 50.dp
           }
           EOF
 
-          # Theme
+          # 2. CarLauncherTheme.kt
           cat << 'EOF' > "$BASE/core/designsystem/CarLauncherTheme.kt"
           package com.universal.carlauncher.core.designsystem
 
           import androidx.compose.material3.MaterialTheme
           import androidx.compose.material3.Typography
+          import androidx.compose.material3.darkColorScheme
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.CompositionLocalProvider
+          import androidx.compose.runtime.staticCompositionLocalOf
+          import androidx.compose.ui.platform.LocalLayoutDirection
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.LayoutDirection
+          import androidx.compose.ui.unit.sp
+
+          val LocalCockpitPreset = staticCompositionLocalOf { CockpitThemePreset.PANORAMIC_TEAL }
+
+          @Composable
+          fun CarLauncherTheme(
+              preset: CockpitThemePreset = CockpitThemePreset.PANORAMIC_TEAL,
+              fontScaleMultiplier: Float = 1.0f,
+              content: @Composable () -> Unit
+          ) {
+              val colors = darkColorScheme(
+                  primary = preset.primary,
+                  secondary = preset.secondary,
+                  background = preset.background,
+                  surface = preset.surface,
+                  surfaceVariant = preset.card,
+                  onBackground = DesignTokens.TextPrimary,
+                  onSurface = DesignTokens.TextPrimary,
+                  error = DesignTokens.StatusDanger
+              )
+
+              val typography = Typography(
+                  displayLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Black, fontSize = (50 * fontScaleMultiplier).sp),
+                  headlineMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = (22 * fontScaleMultiplier).sp),
+                  titleLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = (17 * fontScaleMultiplier).sp),
+                  titleMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = (14 * fontScaleMultiplier).sp),
+                  bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = (13 * fontScaleMultiplier).sp),
+                  labelMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = (11 * fontScaleMultiplier).sp)
+              )
+
+              CompositionLocalProvider(
+                  LocalLayoutDirection provides LayoutDirection.Rtl,
+                  LocalCockpitPreset provides preset
+              ) {
+                  MaterialTheme(
+                      colorScheme = colors,
+                      typography = typography,
+                      content = content
+                  )
+              }
+          }
+          EOF
+
+          # 3. StateComponents.kt (The 8 Mandatory Internal Screen States)
+          cat << 'EOF' > "$BASE/core/designsystem/StateComponents.kt"
+          package com.universal.carlauncher.core.designsystem
+
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.Composable
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.vector.ImageVector
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextAlign
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+
+          enum class ScreenUiStateMode(
+              val titleAr: String,
+              val descriptionAr: String,
+              val badgeColor: Color,
+              val icon: ImageVector
+          ) {
+              NORMAL(
+                  titleAr = "الحالة الطبيعية (Live)",
+                  descriptionAr = "عرض البيانات الحقيقية المباشرة من النظام والمستشعرات",
+                  badgeColor = DesignTokens.StatusSuccess,
+                  icon = Icons.Default.CheckCircle
+              ),
+              EMPTY_DATA(
+                  titleAr = "عدم وجود بيانات",
+                  descriptionAr = "لا توجد سجلات أو عناصر محفوظة في هذا القسم حاليًا",
+                  badgeColor = DesignTokens.StatusInfo,
+                  icon = Icons.Default.Inbox
+              ),
+              NO_INTERNET(
+                  titleAr = "عدم وجود إنترنت",
+                  descriptionAr = "الجهاز غير متصل بالشبكة — الوظائف المحلية تعمل في وضع Offline",
+                  badgeColor = DesignTokens.StatusWarning,
+                  icon = Icons.Default.WifiOff
+              ),
+              PERMISSION_DENIED(
+                  titleAr = "عدم منح الصلاحيات",
+                  descriptionAr = "يتطلب هذا القسم منح صلاحية النظام (الموقع / الوسائط / جهات الاتصال) للعمل",
+                  badgeColor = DesignTokens.StatusWarning,
+                  icon = Icons.Default.Lock
+              ),
+              SENSOR_UNAVAILABLE(
+                  titleAr = "عدم توفر المستشعر",
+                  descriptionAr = "المستشعر المطلوب (GPS / بوصلة مغناطيسية / حرارة) غير متوفر أو مغلق",
+                  badgeColor = DesignTokens.StatusWarning,
+                  icon = Icons.Default.SensorsOff
+              ),
+              LOADING(
+                  titleAr = "جاري تحميل البيانات",
+                  descriptionAr = "يرجى الانتظار أثناء فحص وتجهيز البيانات المحلية...",
+                  badgeColor = DesignTokens.CyanGlow,
+                  icon = Icons.Default.Sync
+              ),
+              ERROR(
+                  titleAr = "حدوث خطأ",
+                  descriptionAr = "تعذر إتمام العملية بسبب خطأ في قراءة المصدر، يمكنك إعادة المحاولة",
+                  badgeColor = DesignTokens.StatusDanger,
+                  icon = Icons.Default.ErrorOutline
+              ),
+              HARDWARE_INCOMPATIBLE(
+                  titleAr = "عدم توافق الجهاز",
+                  descriptionAr = "هذه الوظيفة تتطلب عتادًا خارجيًا (مثل OBD2 ELM327 أو شريحة FM SPI)",
+                  badgeColor = DesignTokens.StatusDanger,
+                  icon = Icons.Default.Memory
+              )
+          }
+
+          @Composable
+          fun UnifiedStateContainer(
+              stateMode: ScreenUiStateMode,
+              screenTitle: String,
+              onPrimaryAction: () -> Unit = {},
+              primaryActionLabel: String = "إعادة المحاولة / منح الصلاحية",
+              normalContent: @Composable () -> Unit
+          ) {
+              if (stateMode == ScreenUiStateMode.NORMAL) {
+                  normalContent()
+              } else {
+                  val preset = LocalCockpitPreset.current
+                  Box(
+                      modifier = Modifier.fillMaxSize().padding(16.dp),
+                      contentAlignment = Alignment.Center
+                  ) {
+                      Card(
+                          colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.92f)),
+                          border = BorderStroke(1.5.dp, stateMode.badgeColor.copy(alpha = 0.8f)),
+                          shape = RoundedCornerShape(DesignTokens.RadiusL),
+                          modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth()
+                      ) {
+                          Column(
+                              modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                              horizontalAlignment = Alignment.CenterHorizontally,
+                              verticalArrangement = Arrangement.spacedBy(12.dp)
+                          ) {
+                              Surface(
+                                  color = stateMode.badgeColor.copy(alpha = 0.15f),
+                                  shape = RoundedCornerShape(50),
+                                  border = BorderStroke(1.dp, stateMode.badgeColor)
+                              ) {
+                                  Text(
+                                      text = "حالة الشاشة: ${stateMode.titleAr}",
+                                      color = stateMode.badgeColor,
+                                      fontSize = 12.sp,
+                                      fontWeight = FontWeight.Bold,
+                                      modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                                  )
+                              }
+
+                              if (stateMode == ScreenUiStateMode.LOADING) {
+                                  CircularProgressIndicator(color = preset.primary, modifier = Modifier.size(44.dp))
+                              } else {
+                                  Icon(
+                                      imageVector = stateMode.icon,
+                                      contentDescription = stateMode.titleAr,
+                                      tint = stateMode.badgeColor,
+                                      modifier = Modifier.size(48.dp)
+                                  )
+                              }
+
+                              Text(
+                                  text = screenTitle,
+                                  style = MaterialTheme.typography.titleLarge,
+                                  color = DesignTokens.TextPrimary,
+                                  textAlign = TextAlign.Center
+                              )
+
+                              Text(
+                                  text = stateMode.descriptionAr,
+                                  style = MaterialTheme.typography.bodyLarge,
+                                  color = DesignTokens.TextSecondary,
+                                  textAlign = TextAlign.Center
+                              )
+
+                              Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                  Button(
+                                      onClick = onPrimaryAction,
+                                      colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold)
+                                  ) {
+                                      Text(primaryActionLabel, color = Color.Black, fontWeight = FontWeight.Bold)
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # 4. ResponsiveWindowEngine.kt
+          cat << 'EOF' > "$BASE/core/responsive/ResponsiveWindowEngine.kt"
+          package com.universal.carlauncher.core.responsive
+
+          import android.content.res.Configuration
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.remember
+          import androidx.compose.ui.platform.LocalConfiguration
+          import androidx.compose.ui.unit.Dp
+          import androidx.compose.ui.unit.dp
+
+          enum class CockpitWindowClass(val labelAr: String) {
+              COMPACT_800x480("شاشة مدمجة 800×480 (7 بوصة)"),
+              MEDIUM_1024x600("شاشة قياسية 1024×600 (9 بوصة)"),
+              HD_1280x720("شاشة عالية الدقة 1280×720 (10 بوصة)"),
+              FHD_1920x1080("شاشة فائقة الدقة 1920×1080 (12+ بوصة)"),
+              PORTRAIT_VERTICAL("شاشة طولية (وضع رأسي Portrait)")
+          }
+
+          data class ResponsiveLayoutMetrics(
+              val windowClass: CockpitWindowClass,
+              val isLandscape: Boolean,
+              val widthDp: Int,
+              val heightDp: Int,
+              val scaleFactor: Float,
+              val outerPadding: Dp,
+              val gridColumns: Int
+          )
+
+          @Composable
+          fun rememberResponsiveMetrics(): ResponsiveLayoutMetrics {
+              val config = LocalConfiguration.current
+              val w = config.screenWidthDp.coerceAtLeast(320)
+              val h = config.screenHeightDp.coerceAtLeast(240)
+              val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE || w >= h
+
+              return remember(w, h, isLandscape) {
+                  val windowClass = when {
+                      !isLandscape -> CockpitWindowClass.PORTRAIT_VERTICAL
+                      w <= 860 || h <= 490 -> CockpitWindowClass.COMPACT_800x480
+                      w <= 1080 || h <= 630 -> CockpitWindowClass.MEDIUM_1024x600
+                      w <= 1400 || h <= 780 -> CockpitWindowClass.HD_1280x720
+                      else -> CockpitWindowClass.FHD_1920x1080
+                  }
+
+                  val scale = when {
+                      h <= 420 -> 0.80f
+                      h <= 520 -> 0.90f
+                      h <= 650 -> 1.00f
+                      else -> 1.10f
+                  }
+
+                  val cols = when {
+                      !isLandscape -> 2
+                      w <= 860 -> 2
+                      w <= 1300 -> 3
+                      else -> 4
+                  }
+
+                  ResponsiveLayoutMetrics(
+                      windowClass = windowClass,
+                      isLandscape = isLandscape,
+                      widthDp = w,
+                      heightDp = h,
+                      scaleFactor = scale,
+                      outerPadding = if (h <= 480) 6.dp else 10.dp,
+                      gridColumns = cols
+                  )
+              }
+          }
+          EOF
+
+          # 5. LauncherStorage.kt
+          cat << 'EOF' > "$BASE/core/storage/LauncherStorage.kt"
+          package com.universal.carlauncher.core.storage
+
+          import android.content.Context
+          import com.universal.carlauncher.core.designsystem.CockpitThemePreset
+
+          class LauncherStorage(context: Context) {
+              private val prefs = context.getSharedPreferences("car_launcher_v4_prefs", Context.MODE_PRIVATE)
+              val availableBrands = listOf("Ford", "KIA", "Mercedes", "BMW", "Audi", "Porsche", "Tesla", "Toyota")
+
+              var themePreset: CockpitThemePreset
+                  get() = runCatching {
+                      CockpitThemePreset.valueOf(prefs.getString("theme", CockpitThemePreset.PANORAMIC_TEAL.name)!!)
+                  }.getOrDefault(CockpitThemePreset.PANORAMIC_TEAL)
+                  set(value) = prefs.edit().putString("theme", value.name).apply()
+
+              var carBrandName: String
+                  get() = prefs.getString("car_brand", "Ford") ?: "Ford"
+                  set(value) = prefs.edit().putString("car_brand", value).apply()
+
+              fun cycleCarBrand(): String {
+                  val idx = availableBrands.indexOf(carBrandName)
+                  val next = availableBrands[(idx + 1) % availableBrands.size]
+                  carBrandName = next
+                  return next
+              }
+
+              var use24HourFormat: Boolean
+                  get() = prefs.getBoolean("use_24h", false)
+                  set(value) = prefs.edit().putBoolean("use_24h", value).apply()
+
+              var showSeconds: Boolean
+                  get() = prefs.getBoolean("show_seconds", false)
+                  set(value) = prefs.edit().putBoolean("show_seconds", value).apply()
+
+              var showHijriDate: Boolean
+                  get() = prefs.getBoolean("show_hijri", true)
+                  set(value) = prefs.edit().putBoolean("show_hijri", value).apply()
+
+              var useMphUnit: Boolean
+                  get() = prefs.getBoolean("use_mph", false)
+                  set(value) = prefs.edit().putBoolean("use_mph", value).apply()
+
+              var speedAlertLimit: Int
+                  get() = prefs.getInt("speed_limit", 120)
+                  set(value) = prefs.edit().putInt("speed_limit", value).apply()
+
+              var circularGaugeStyle: Boolean
+                  get() = prefs.getBoolean("circular_gauge", true)
+                  set(value) = prefs.edit().putBoolean("circular_gauge", value).apply()
+
+              var cardAlphaPercent: Int
+                  get() = prefs.getInt("card_alpha", 82)
+                  set(value) = prefs.edit().putInt("card_alpha", value.coerceIn(50, 100)).apply()
+
+              var prayerCalculationMethod: String
+                  get() = prefs.getString("prayer_method", "الهيئة المصرية العامة للمساحة") ?: "الهيئة المصرية العامة للمساحة"
+                  set(value) = prefs.edit().putString("prayer_method", value).apply()
+
+              var asrMadhhab: String
+                  get() = prefs.getString("asr_madhhab", "جمهور الفقهاء (الشافعي، المالكي، الحنبلي)") ?: "جمهور الفقهاء (الشافعي، المالكي، الحنبلي)"
+                  set(value) = prefs.edit().putString("asr_madhhab", value).apply()
+
+              var selectedMuezzin: String
+                  get() = prefs.getString("muezzin", "الشيخ عبد الباسط عبد الصمد") ?: "الشيخ عبد الباسط عبد الصمد"
+                  set(value) = prefs.edit().putString("muezzin", value).apply()
+
+              var tasbeehCount: Int
+                  get() = prefs.getInt("tasbeeh_count", 0)
+                  set(value) = prefs.edit().putInt("tasbeeh_count", value).apply()
+
+              var tasbeehTarget: Int
+                  get() = prefs.getInt("tasbeeh_target", 100)
+                  set(value) = prefs.edit().putInt("tasbeeh_target", value).apply()
+
+              var totalLifetimeTasbeeh: Int
+                  get() = prefs.getInt("tasbeeh_lifetime", 0)
+                  set(value) = prefs.edit().putInt("tasbeeh_lifetime", value).apply()
+
+              fun isCardVisible(cardKey: String): Boolean = prefs.getBoolean("card_vis_$cardKey", true)
+              fun setCardVisible(cardKey: String, visible: Boolean) = prefs.edit().putBoolean("card_vis_$cardKey", visible).apply()
+
+              fun getFavoritePackages(): Set<String> = prefs.getStringSet("fav_apps", emptySet()) ?: emptySet()
+              fun toggleFavoritePackage(pkg: String): Set<String> {
+                  val current = getFavoritePackages().toMutableSet()
+                  if (current.contains(pkg)) current.remove(pkg) else current.add(pkg)
+                  prefs.edit().putStringSet("fav_apps", current).apply()
+                  return current
+              }
+
+              fun getEnabledShortcuts(): List<String> {
+                  val raw = prefs.getString("shortcuts_order", "الخرائط,الهاتف,التطبيقات,الموسيقى,الراديو,الأذكار,الطقس,السيارة")
+                  return raw?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+              }
+
+              fun saveEnabledShortcuts(list: List<String>) {
+                  prefs.edit().putString("shortcuts_order", list.joinToString(",")).apply()
+              }
+
+              fun resetAllToDefaults() {
+                  prefs.edit().clear().apply()
+              }
+          }
+          EOF
+
+          # 6. VehicleHardwareService.kt
+          cat << 'EOF' > "$BASE/core/hardware/VehicleHardwareService.kt"
+          package com.universal.carlauncher.core.hardware
+
+          import android.Manifest
+          import android.bluetooth.BluetoothManager
+          import android.content.Context
+          import android.content.pm.PackageManager
+          import android.hardware.Sensor
+          import android.hardware.SensorManager
+          import android.location.LocationManager
+          import android.net.ConnectivityManager
+          import android.net.NetworkCapabilities
+          import android.os.Build
+          import androidx.core.content.ContextCompat
+
+          enum class CompatibilityLevel(val labelAr: String, val badgeText: String) {
+              SUPPORTED("مدعوم وجاهز", "SUPPORTED"),
+              REQUIRES_EXTERNAL_HARDWARE("يتطلب جهازًا خارجيًا", "REQUIRES EXTERNAL HARDWARE"),
+              NOT_SUPPORTED("غير مدعوم على الجهاز الحالي", "NOT SUPPORTED")
+          }
+
+          data class HardwareCapabilityItem(
+              val nameAr: String,
+              val detailsAr: String,
+              val level: CompatibilityLevel
+          )
+
+          data class HardwareDiagnosticReport(
+              val androidVersion: String = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+              val deviceModel: String = "${Build.MANUFACTURER} ${Build.MODEL}",
+              val hasGpsHardware: Boolean = true,
+              val hasLocationPermission: Boolean = true,
+              val isGpsEnabled: Boolean = true,
+              val hasBluetoothHardware: Boolean = true,
+              val isBluetoothEnabled: Boolean = true,
+              val isInternetConnected: Boolean = false,
+              val connectionTypeAr: String = "Offline",
+              val hasMagnetometerCompass: Boolean = true,
+              val hasAccelerometer: Boolean = true,
+              val hasAmbientTempSensor: Boolean = false,
+              val hasMicrophone: Boolean = true,
+              val hasUsbHost: Boolean = true
+          ) {
+              fun toCapabilityMatrix(): List<HardwareCapabilityItem> = listOf(
+                  HardwareCapabilityItem(
+                      "مستقبل الأقمار الصناعية GPS",
+                      if (!hasGpsHardware) "الشاشة لا تحتوي على شريحة GPS" else if (!hasLocationPermission) "بانتظار منح صلاحية الموقع" else if (!isGpsEnabled) "مغلق من الإعدادات" else "نشط وجاهز لقراءة السرعة والموقع",
+                      if (hasGpsHardware) CompatibilityLevel.SUPPORTED else CompatibilityLevel.NOT_SUPPORTED
+                  ),
+                  HardwareCapabilityItem(
+                      "اتصال البلوتوث Bluetooth",
+                      if (!hasBluetoothHardware) "غير متوفر" else if (isBluetoothEnabled) "مفعل ومتاح للهاتف وOBD2" else "مغلق حاليًا",
+                      if (hasBluetoothHardware) CompatibilityLevel.SUPPORTED else CompatibilityLevel.NOT_SUPPORTED
+                  ),
+                  HardwareCapabilityItem(
+                      "الاتصال بالشبكة Wi-Fi / Cellular",
+                      connectionTypeAr,
+                      CompatibilityLevel.SUPPORTED
+                  ),
+                  HardwareCapabilityItem(
+                      "مستشعر البوصلة المغناطيسي Magnetometer",
+                      if (hasMagnetometerCompass) "متوفر لتوجيه البوصلة والقبلة" else "غير مدمج بالشاشة (يعتمد على اتجاه حركة GPS)",
+                      if (hasMagnetometerCompass) CompatibilityLevel.SUPPORTED else CompatibilityLevel.NOT_SUPPORTED
+                  ),
+                  HardwareCapabilityItem(
+                      "كمبيوتر السيارة والأعطال OBD2 (ELM327)",
+                      "قراءة RPM وحرارة المحرك والجهد وأكواد الأعطال DTC عبر Bluetooth/USB",
+                      CompatibilityLevel.REQUIRES_EXTERNAL_HARDWARE
+                  ),
+                  HardwareCapabilityItem(
+                      "مستقبل الراديو الأرضي FM Tuner SPI",
+                      "لا توجد واجهة Android قياسية موثقة لشريحة FM على هذا الجهاز",
+                      CompatibilityLevel.NOT_SUPPORTED
+                  ),
+                  HardwareCapabilityItem(
+                      "حساس درجة الحرارة الخارجية Ambient Sensor",
+                      if (hasAmbientTempSensor) "مدمج بالجهاز" else "يتطلب حساس سيارة أو اتصال إنترنت",
+                      if (hasAmbientTempSensor) CompatibilityLevel.SUPPORTED else CompatibilityLevel.REQUIRES_EXTERNAL_HARDWARE
+                  ),
+                  HardwareCapabilityItem(
+                      "منفذ الفلاشة والملحقات USB Host",
+                      if (hasUsbHost) "مدعوم لتشغيل الصوتيات وملحقات USB" else "غير مدعوم",
+                      if (hasUsbHost) CompatibilityLevel.SUPPORTED else CompatibilityLevel.NOT_SUPPORTED
+                  )
+              )
+          }
+
+          class VehicleHardwareService(private val context: Context) {
+              fun inspectHardware(): HardwareDiagnosticReport {
+                  val pm = context.packageManager
+                  val hasGps = pm.hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS)
+                  val hasPerm = ContextCompat.checkSelfPermission(
+                      context, Manifest.permission.ACCESS_FINE_LOCATION
+                  ) == PackageManager.PERMISSION_GRANTED
+
+                  val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                  val gpsOn = runCatching { lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true }.getOrDefault(false)
+
+                  val hasBt = pm.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)
+                  val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                  val btOn = runCatching { bm?.adapter?.isEnabled == true }.getOrDefault(false)
+
+                  val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                  val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+                  val netConnected = caps != null
+                  val netLabel = when {
+                      caps == null -> "غير متصل (Offline)"
+                      caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi متصل"
+                      caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "بيانات الهاتف متصلة"
+                      else -> "متصل"
+                  }
+
+                  val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+                  val hasCompass = sm?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD) != null
+                  val hasAccel = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null
+                  val hasTemp = sm?.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE) != null
+                  val hasMic = pm.hasSystemFeature(PackageManager.FEATURE_MICROPHONE)
+                  val hasUsb = pm.hasSystemFeature(PackageManager.FEATURE_USB_HOST)
+
+                  return HardwareDiagnosticReport(
+                      hasGpsHardware = hasGps,
+                      hasLocationPermission = hasPerm,
+                      isGpsEnabled = gpsOn,
+                      hasBluetoothHardware = hasBt,
+                      isBluetoothEnabled = btOn,
+                      isInternetConnected = netConnected,
+                      connectionTypeAr = netLabel,
+                      hasMagnetometerCompass = hasCompass,
+                      hasAccelerometer = hasAccel,
+                      hasAmbientTempSensor = hasTemp,
+                      hasMicrophone = hasMic,
+                      hasUsbHost = hasUsb
+                  )
+              }
+          }
+          EOF
+
+          # 7. OfflinePrayerEngine.kt
+          cat << 'EOF' > "$BASE/domain/islamic/OfflinePrayerEngine.kt"
+          package com.universal.carlauncher.domain.islamic
+
+          import java.util.Calendar
+          import java.util.Locale
+          import java.util.TimeZone
+          import kotlin.math.*
+
+          data class DailyPrayerSchedule(
+              val fajr: String = "4:44 ص",
+              val sunrise: String = "6:12 ص",
+              val dhuhr: String = "11:37 ص",
+              val asr: String = "2:48 م",
+              val maghrib: String = "5:10 م",
+              val isha: String = "6:40 م",
+              val nextPrayerName: String = "الفجر",
+              val nextPrayerTime: String = "4:44 ص",
+              val remainingCountdownText: String = "متبقي 1 س و 52 د",
+              val qiblaDegrees: Int = 136
+          )
+
+          object OfflinePrayerEngine {
+              fun calculate(lat: Double = 30.0444, lon: Double = 31.2357, fajrAngle: Double = 19.5, ishaAngle: Double = 17.5): DailyPrayerSchedule {
+                  val cal = Calendar.getInstance()
+                  val year = cal.get(Calendar.YEAR)
+                  val month = cal.get(Calendar.MONTH) + 1
+                  val day = cal.get(Calendar.DAY_OF_MONTH)
+                  val tzHours = TimeZone.getDefault().getOffset(cal.timeInMillis) / 3600000.0
+
+                  val jd = julianDate(year, month, day) - lon / (15.0 * 24.0)
+                  val d = jd - 2451545.0
+                  val g = fixAngle(357.529 + 0.98560028 * d)
+                  val q = fixAngle(280.459 + 0.98564736 * d)
+                  val l = fixAngle(q + 1.915 * sin(Math.toRadians(g)) + 0.020 * sin(Math.toRadians(2 * g)))
+                  val e = 23.439 - 0.00000036 * d
+                  val decl = Math.toDegrees(asin(sin(Math.toRadians(e)) * sin(Math.toRadians(l))))
+                  val ra = Math.toDegrees(atan2(cos(Math.toRadians(e)) * sin(Math.toRadians(l)), cos(Math.toRadians(l)))) / 15.0
+                  val eqt = q / 15.0 - fixHour(ra)
+
+                  val dhuhrHour = fixHour(12.0 + tzHours - lon / 15.0 - eqt)
+                  val sunriseHour = dhuhrHour - sunAngleTime(0.833, lat, decl)
+                  val sunsetHour = dhuhrHour + sunAngleTime(0.833, lat, decl)
+                  val fajrHour = dhuhrHour - sunAngleTime(fajrAngle, lat, decl)
+                  val ishaHour = dhuhrHour + sunAngleTime(ishaAngle, lat, decl)
+                  val asrAngle = -Math.toDegrees(atan(1.0 / (1.0 + tan(Math.toRadians(abs(lat - decl))))))
+                  val asrHour = dhuhrHour + sunAngleTime(-asrAngle, lat, decl)
+
+                  val nowHour = cal.get(Calendar.HOUR_OF_DAY) + cal.get(Calendar.MINUTE) / 60.0
+                  val list = listOf(
+                      "الفجر" to fajrHour,
+                      "الظهر" to dhuhrHour,
+                      "العصر" to asrHour,
+                      "المغرب" to sunsetHour,
+                      "العشاء" to ishaHour
+                  )
+                  val next = list.firstOrNull { it.second > nowHour } ?: ("الفجر" to (fajrHour + 24.0))
+                  val diffHours = (next.second - nowHour).coerceAtLeast(0.0)
+                  val remH = floor(diffHours).toInt()
+                  val remM = floor((diffHours - remH) * 60.0).toInt()
+                  val countdownStr = "متبقي ${remH} س و ${remM} د"
+
+                  val mLat = Math.toRadians(21.4225)
+                  val mLon = Math.toRadians(39.8262)
+                  val uLat = Math.toRadians(lat)
+                  val uLon = Math.toRadians(lon)
+                  val y = sin(mLon - uLon)
+                  val x = cos(uLat) * tan(mLat) - sin(uLat) * cos(mLon - uLon)
+                  val qibla = ((Math.toDegrees(atan2(y, x)) + 360.0) % 360.0).toInt()
+
+                  return DailyPrayerSchedule(
+                      fajr = format12hArabic(fajrHour),
+                      sunrise = format12hArabic(sunriseHour),
+                      dhuhr = format12hArabic(dhuhrHour),
+                      asr = format12hArabic(asrHour),
+                      maghrib = format12hArabic(sunsetHour),
+                      isha = format12hArabic(ishaHour),
+                      nextPrayerName = next.first,
+                      nextPrayerTime = format12hArabic(next.second % 24.0),
+                      remainingCountdownText = countdownStr,
+                      qiblaDegrees = qibla
+                  )
+              }
+
+              private fun sunAngleTime(angle: Double, lat: Double, decl: Double): Double {
+                  val num = -sin(Math.toRadians(angle)) - sin(Math.toRadians(lat)) * sin(Math.toRadians(decl))
+                  val den = cos(Math.toRadians(lat)) * cos(Math.toRadians(decl))
+                  val cosVal = (num / den).coerceIn(-1.0, 1.0)
+                  return Math.toDegrees(acos(cosVal)) / 15.0
+              }
+
+              private fun julianDate(year: Int, month: Int, day: Int): Double {
+                  var y = year
+                  var m = month
+                  if (m <= 2) { y -= 1; m += 12 }
+                  val a = floor(y / 100.0)
+                  val b = 2 - a + floor(a / 4.0)
+                  return floor(365.25 * (y + 4716)) + floor(30.6001 * (m + 1)) + day + b - 1524.5
+              }
+
+              private fun fixAngle(a: Double): Double = a - 360.0 * floor(a / 360.0)
+              private fun fixHour(a: Double): Double = a - 24.0 * floor(a / 24.0)
+              private fun format12hArabic(time: Double): String {
+                  val t = fixHour(time + 0.5 / 60.0)
+                  val h24 = floor(t).toInt()
+                  val m = floor((t - h24) * 60.0).toInt()
+                  val suffix = if (h24 < 12) "ص" else "م"
+                  val h12 = when {
+                      h24 == 0 -> 12
+                      h24 > 12 -> h24 - 12
+                      else -> h24
+                  }
+                  return String.format(Locale.US, "%d:%02d %s", h12, m, suffix)
+              }
+          }
+          EOF
+
+          # 8. AppScreenRoute.kt (All 25 Screens + 6 Settings Sub-pages)
+          cat << 'EOF' > "$BASE/ui/navigation/AppScreenRoute.kt"
+          package com.universal.carlauncher.ui.navigation
+
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.ui.graphics.vector.ImageVector
+
+          enum class AppScreenRoute(
+              val titleAr: String,
+              val categoryAr: String,
+              val icon: ImageVector
+          ) {
+              // 1. الرئيسية
+              DASHBOARD("الشاشة الرئيسية (Dashboard)", "القيادة", Icons.Default.Speed),
+              // 2. الملاحة
+              NAVIGATION("شاشة الملاحة والخرائط", "القيادة", Icons.Default.LocationOn),
+              // 3 & 4. الموسيقى وقائمة الأغاني
+              MUSIC_PLAYER("شاشة مشغل الموسيقى", "الوسائط", Icons.Default.PlayCircle),
+              SONG_LIST("شاشة قائمة الأغاني والمجلدات", "الوسائط", Icons.Default.LibraryMusic),
+              // 5. الراديو
+              RADIO("شاشة الراديو FM", "الوسائط", Icons.Default.Radio),
+              // 6 & 7. الهاتف وجهات الاتصال
+              PHONE_DIALER("شاشة الهاتف والاتصال", "الاتصالات", Icons.Default.Call),
+              CONTACTS("شاشة جهات الاتصال", "الاتصالات", Icons.Default.Contacts),
+              // 8 & 9. التطبيقات المثبتة والمفضلة
+              INSTALLED_APPS("شاشة التطبيقات المثبتة", "التطبيقات", Icons.Default.Apps),
+              FAVORITE_APPS("شاشة التطبيقات المفضلة", "التطبيقات", Icons.Default.Star),
+              // 10 & 11. السيارة والرحلة
+              VEHICLE_INFO("شاشة معلومات السيارة (OBD2)", "السيارة", Icons.Default.DirectionsCar),
+              TRIP_DATA("شاشة بيانات وسجل الرحلات", "السيارة", Icons.Default.Route),
+              // 12..17. القسم الإسلامي وشاشاته الفرعية
+              ISLAMIC_HUB("شاشة القسم الإسلامي الرئيسي", "الإسلامي", Icons.Default.Mosque),
+              PRAYER_TIMES("شاشة مواقيت الصلاة", "الإسلامي", Icons.Default.AccessTime),
+              ADHKAR("شاشة الأذكار والأدعية", "الإسلامي", Icons.Default.MenuBook),
+              TASBEEH("شاشة المسبحة الإلكترونية", "الإسلامي", Icons.Default.TouchApp),
+              QIBLA("شاشة البوصلة واتجاه القبلة", "الإسلامي", Icons.Default.Explore),
+              HIJRI_CALENDAR("شاشة التقويم الهجري", "الإسلامي", Icons.Default.CalendarMonth),
+              // 18. الطقس
+              WEATHER("شاشة الطقس والمناخ", "القيادة", Icons.Default.Cloud),
+              // 19..25. الإعدادات والتخصيص والتوافق
+              SETTINGS_MAIN("شاشة الإعدادات الرئيسية", "الإعدادات", Icons.Default.Settings),
+              SETTINGS_SUBPAGES("صفحات الإعدادات الفرعية", "الإعدادات", Icons.Default.Tune),
+              UI_CUSTOMIZATION("شاشة تخصيص الواجهة", "الإعدادات", Icons.Default.DashboardCustomize),
+              THEME_SELECTOR("شاشة اختيار الثيمات", "الإعدادات", Icons.Default.Palette),
+              SHORTCUTS_MANAGER("شاشة إدارة الاختصارات", "الإعدادات", Icons.Default.AppShortcut),
+              APP_INFO("شاشة معلومات التطبيق", "الإعدادات", Icons.Default.Info),
+              DEVICE_COMPATIBILITY("شاشة إدارة توافق الأجهزة", "السيارة", Icons.Default.Memory)
+          }
+
+          enum class SettingsSubPage(val titleAr: String, val icon: ImageVector) {
+              APPEARANCE("إعدادات المظهر", Icons.Default.Palette),
+              SCREEN_LAYOUT("إعدادات الشاشة والتخطيط", Icons.Default.AspectRatio),
+              CLOCK_DATE("إعدادات الساعة والتاريخ", Icons.Default.Schedule),
+              DRIVING_UNITS("إعدادات القيادة والسرعة", Icons.Default.Speed),
+              AUDIO_ADHAN("إعدادات الصوت والأذان", Icons.Default.VolumeUp),
+              SYSTEM_BACKUP("إعدادات النظام والنسخ الاحتياطي", Icons.Default.Security)
+          }
+          EOF
+
+          # 9. CockpitNavigationShell.kt (Panoramic Frame + Side Drawer for all 25 screens + UI State Switcher + Bottom Dock)
+          cat << 'EOF' > "$BASE/ui/navigation/CockpitNavigationShell.kt"
+          package com.universal.carlauncher.ui.navigation
+
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.automirrored.filled.ArrowBack
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.Path
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.universal.carlauncher.core.designsystem.DesignTokens
+          import com.universal.carlauncher.core.designsystem.LocalCockpitPreset
+          import com.universal.carlauncher.core.designsystem.ScreenUiStateMode
+
+          @Composable
+          fun CockpitNavigationShell(
+              currentRoute: AppScreenRoute,
+              canNavigateBack: Boolean,
+              activeStateMode: ScreenUiStateMode,
+              onStateModeChange: (ScreenUiStateMode) -> Unit,
+              onNavigateTo: (AppScreenRoute) -> Unit,
+              onNavigateBack: () -> Unit,
+              content: @Composable BoxScope.() -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              var isAllScreensDrawerOpen by remember { mutableStateOf(false) }
+              var isStateMenuExpanded by remember { mutableStateOf(false) }
+
+              val bottomDockItems = listOf(
+                  AppScreenRoute.NAVIGATION to "الخرائط",
+                  AppScreenRoute.PHONE_DIALER to "الهاتف",
+                  AppScreenRoute.INSTALLED_APPS to "التطبيقات",
+                  AppScreenRoute.MUSIC_PLAYER to "الموسيقى",
+                  AppScreenRoute.RADIO to "الراديو",
+                  AppScreenRoute.ISLAMIC_HUB to "الإسلامي",
+                  AppScreenRoute.VEHICLE_INFO to "السيارة",
+                  AppScreenRoute.WEATHER to "الطقس",
+                  AppScreenRoute.SETTINGS_MAIN to "الإعدادات"
+              )
+
+              Box(modifier = Modifier.fillMaxSize().background(preset.background)) {
+                  ScenicHighwayBackground()
+
+                  Column(
+                      modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
+                      verticalArrangement = Arrangement.spacedBy(6.dp)
+                  ) {
+                      // شريط تنقل علوي يظهر في الشاشات الداخلية أو عند فتح فاحص الحالات
+                      if (currentRoute != AppScreenRoute.DASHBOARD || activeStateMode != ScreenUiStateMode.NORMAL) {
+                          Surface(
+                              color = preset.card.copy(alpha = 0.88f),
+                              shape = RoundedCornerShape(DesignTokens.RadiusM),
+                              border = BorderStroke(1.dp, preset.border),
+                              modifier = Modifier.fillMaxWidth()
+                          ) {
+                              Row(
+                                  modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                      if (canNavigateBack) {
+                                          IconButton(onClick = onNavigateBack, modifier = Modifier.size(34.dp)) {
+                                              Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع", tint = DesignTokens.TextPrimary)
+                                          }
+                                      }
+                                      IconButton(onClick = { isAllScreensDrawerOpen = !isAllScreensDrawerOpen }, modifier = Modifier.size(34.dp)) {
+                                          Icon(Icons.Default.Menu, contentDescription = "فهرس الـ 25 شاشة", tint = preset.primary)
+                                      }
+                                      Text(
+                                          text = currentRoute.titleAr,
+                                          style = MaterialTheme.typography.titleMedium,
+                                          color = preset.primary,
+                                          fontWeight = FontWeight.Bold
+                                      )
+                                  }
+
+                                  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                      // قائمة منسدلة لمعاينة واختبار الحالات الـ 8 الإلزامية على أي شاشة
+                                      Box {
+                                          OutlinedButton(
+                                              onClick = { isStateMenuExpanded = true },
+                                              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                          ) {
+                                              Icon(Icons.Default.Visibility, contentDescription = null, tint = activeStateMode.badgeColor, modifier = Modifier.size(16.dp))
+                                              Spacer(Modifier.width(4.dp))
+                                              Text("الحالة: ${activeStateMode.titleAr}", fontSize = 11.sp, color = DesignTokens.TextPrimary)
+                                          }
+                                          DropdownMenu(
+                                              expanded = isStateMenuExpanded,
+                                              onDismissRequest = { isStateMenuExpanded = false }
+                                          ) {
+                                              ScreenUiStateMode.entries.forEach { mode ->
+                                                  DropdownMenuItem(
+                                                      text = { Text(mode.titleAr, fontSize = 12.sp) },
+                                                      onClick = {
+                                                          onStateModeChange(mode)
+                                                          isStateMenuExpanded = false
+                                                      }
+                                                  )
+                                              }
+                                          }
+                                      }
+
+                                      if (currentRoute != AppScreenRoute.DASHBOARD) {
+                                          Button(
+                                              onClick = { onNavigateTo(AppScreenRoute.DASHBOARD) },
+                                              colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold),
+                                              contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+                                          ) {
+                                              Icon(Icons.Default.Home, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                                              Spacer(Modifier.width(4.dp))
+                                              Text("الرئيسية", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+
+                      // منطقة محتوى الشاشة + القائمة الجانبية لجميع الشاشات الـ 25
+                      Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                          if (isAllScreensDrawerOpen) {
+                              Surface(
+                                  color = preset.surface.copy(alpha = 0.96f),
+                                  shape = RoundedCornerShape(DesignTokens.RadiusM),
+                                  border = BorderStroke(1.5.dp, preset.primary),
+                                  modifier = Modifier.width(250.dp).fillMaxHeight()
+                              ) {
+                                  Column(Modifier.fillMaxSize().padding(10.dp)) {
+                                      Row(
+                                          Modifier.fillMaxWidth(),
+                                          horizontalArrangement = Arrangement.SpaceBetween,
+                                          verticalAlignment = Alignment.CenterVertically
+                                      ) {
+                                          Text("فهرس شاشات النظام (25)", color = preset.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                          IconButton(onClick = { isAllScreensDrawerOpen = false }, modifier = Modifier.size(28.dp)) {
+                                              Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = DesignTokens.TextSecondary)
+                                          }
+                                      }
+                                      HorizontalDivider(color = preset.border, modifier = Modifier.padding(vertical = 6.dp))
+                                      LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                          items(AppScreenRoute.entries) { route ->
+                                              val selected = route == currentRoute
+                                              Surface(
+                                                  color = if (selected) preset.primary.copy(alpha = 0.22f) else Color.Transparent,
+                                                  shape = RoundedCornerShape(10.dp),
+                                                  modifier = Modifier.fillMaxWidth().clickable {
+                                                      onNavigateTo(route)
+                                                      isAllScreensDrawerOpen = false
+                                                  }
+                                              ) {
+                                                  Row(
+                                                      Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                                      verticalAlignment = Alignment.CenterVertically,
+                                                      horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                  ) {
+                                                      Icon(route.icon, contentDescription = null, tint = if (selected) preset.primary else DesignTokens.TextSecondary, modifier = Modifier.size(18.dp))
+                                                      Text(route.titleAr, fontSize = 12.sp, color = if (selected) DesignTokens.TextPrimary else DesignTokens.TextSecondary, maxLines = 1)
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+
+                          Box(modifier = Modifier.weight(1f).fillMaxHeight(), content = content)
+                      }
+
+                      // الشريط السفلي البانورامي العريض المطابق للصورة الأولى + زر فهرس الـ 25 شاشة
+                      Surface(
+                          color = preset.card.copy(alpha = 0.80f),
+                          shape = RoundedCornerShape(26.dp),
+                          border = BorderStroke(1.2.dp, preset.border.copy(alpha = 0.85f)),
+                          modifier = Modifier.fillMaxWidth().height(56.dp)
+                      ) {
+                          Row(
+                              modifier = Modifier.fillMaxSize(),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              // زر فتح فهرس كل الشاشات الـ 25
+                              Box(
+                                  modifier = Modifier
+                                      .weight(0.9f)
+                                      .fillMaxHeight()
+                                      .clickable { isAllScreensDrawerOpen = !isAllScreensDrawerOpen },
+                                  contentAlignment = Alignment.Center
+                              ) {
+                                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                      Icon(Icons.Default.Widgets, contentDescription = "كل الشاشات", tint = DesignTokens.AmberGold, modifier = Modifier.size(20.dp))
+                                      Text("كل الشاشات", fontSize = 10.sp, color = DesignTokens.AmberGold, fontWeight = FontWeight.Bold)
+                                  }
+                              }
+
+                              Box(Modifier.width(1.dp).fillMaxHeight(0.55f).background(preset.border.copy(alpha = 0.55f)))
+
+                              bottomDockItems.forEachIndexed { idx, (route, label) ->
+                                  val isSelected = currentRoute == route
+                                  Box(
+                                      modifier = Modifier
+                                          .weight(1f)
+                                          .fillMaxHeight()
+                                          .clickable {
+                                              if (currentRoute == route && route != AppScreenRoute.DASHBOARD) {
+                                                  onNavigateTo(AppScreenRoute.DASHBOARD)
+                                              } else {
+                                                  onNavigateTo(route)
+                                              }
+                                          },
+                                      contentAlignment = Alignment.Center
+                                  ) {
+                                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                          Icon(
+                                              imageVector = route.icon,
+                                              contentDescription = label,
+                                              tint = if (isSelected) preset.primary else DesignTokens.TextPrimary,
+                                              modifier = Modifier.size(20.dp)
+                                          )
+                                          Text(
+                                              text = label,
+                                              fontSize = 10.sp,
+                                              fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                              color = if (isSelected) preset.primary else DesignTokens.TextPrimary,
+                                              maxLines = 1
+                                          )
+                                      }
+                                  }
+                                  if (idx < bottomDockItems.lastIndex) {
+                                      Box(Modifier.width(1.dp).fillMaxHeight(0.55f).background(preset.border.copy(alpha = 0.55f)))
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun ScenicHighwayBackground() {
+              val preset = LocalCockpitPreset.current
+              Canvas(modifier = Modifier.fillMaxSize()) {
+                  val w = size.width
+                  val h = size.height
+                  drawRect(
+                      brush = Brush.verticalGradient(
+                          colors = listOf(Color(0xFF041019), preset.background, Color(0xFF072331), Color(0xFF05131C))
+                      )
+                  )
+                  val mountainPath = Path().apply {
+                      moveTo(0f, h * 0.52f)
+                      lineTo(w * 0.15f, h * 0.34f)
+                      lineTo(w * 0.32f, h * 0.48f)
+                      lineTo(w * 0.50f, h * 0.42f)
+                      lineTo(w * 0.70f, h * 0.32f)
+                      lineTo(w * 0.88f, h * 0.44f)
+                      lineTo(w, h * 0.36f)
+                      lineTo(w, h * 0.56f)
+                      lineTo(0f, h * 0.56f)
+                      close()
+                  }
+                  drawPath(mountainPath, color = Color(0xFF0A2636).copy(alpha = 0.55f))
+
+                  val roadPath = Path().apply {
+                      moveTo(w * 0.44f, h * 0.46f)
+                      lineTo(w * 0.56f, h * 0.46f)
+                      lineTo(w * 0.78f, h)
+                      lineTo(w * 0.22f, h)
+                      close()
+                  }
+                  drawPath(
+                      path = roadPath,
+                      brush = Brush.verticalGradient(
+                          colors = listOf(Color(0xFF0F293A).copy(alpha = 0.35f), Color(0xFF091824).copy(alpha = 0.75f))
+                      )
+                  )
+                  drawLine(preset.primary.copy(alpha = 0.30f), Offset(w * 0.45f, h * 0.46f), Offset(w * 0.25f, h), 2.dp.toPx())
+                  drawLine(preset.primary.copy(alpha = 0.30f), Offset(w * 0.55f, h * 0.46f), Offset(w * 0.75f, h), 2.dp.toPx())
+                  drawLine(Color.White.copy(alpha = 0.18f), Offset(w * 0.50f, h * 0.48f), Offset(w * 0.50f, h), 4.dp.toPx())
+              }
+          }
+          EOF
+
+          # 10. DashboardScreen.kt (Screen #1 - Panoramic Cockpit matching Image 1 + Portrait Support)
+          cat << 'EOF' > "$BASE/ui/screens/DashboardScreen.kt"
+          package com.universal.carlauncher.ui.screens
+
+          import android.content.Intent
+          import android.provider.Settings
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.geometry.CornerRadius
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.geometry.Size
+          import androidx.compose.ui.graphics.*
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.graphics.vector.ImageVector
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontStyle
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.universal.carlauncher.core.designsystem.DesignTokens
+          import com.universal.carlauncher.core.designsystem.LocalCockpitPreset
+          import com.universal.carlauncher.core.hardware.HardwareDiagnosticReport
+          import com.universal.carlauncher.core.responsive.ResponsiveLayoutMetrics
+          import com.universal.carlauncher.core.storage.LauncherStorage
+          import com.universal.carlauncher.domain.islamic.DailyPrayerSchedule
+          import com.universal.carlauncher.ui.navigation.AppScreenRoute
+          import java.util.Locale
+          import kotlin.math.cos
+          import kotlin.math.sin
+
+          data class LiveDrivingTelemetry(
+              val speedKmh: Int? = null,
+              val accuracyMeters: Int? = null,
+              val distanceKm: Float = 0.0f,
+              val maxSpeedKmh: Int = 0,
+              val avgSpeedKmh: Int = 0,
+              val bearingDegrees: Int? = null,
+              val durationMinutes: Int = 0,
+              val durationFormatted: String = "00:00:00",
+              val tripStartTimeFormatted: String = "07:52 AM",
+              val gpsStatusMessage: String = "بانتظار إشارة GPS"
+          )
+
+          @Composable
+          fun DashboardScreen(
+              metrics: ResponsiveLayoutMetrics,
+              timeFormatted: String,
+              amPmArabic: String,
+              gregorianDate: String,
+              hijriDate: String,
+              telemetry: LiveDrivingTelemetry,
+              hardware: HardwareDiagnosticReport,
+              prayers: DailyPrayerSchedule,
+              currentTrackTitle: String,
+              currentTrackArtist: String,
+              isPlayingMusic: Boolean,
+              storage: LauncherStorage?,
+              onToggleMusicPlay: () -> Unit,
+              onNextTrack: () -> Unit,
+              onPrevTrack: () -> Unit,
+              onResetTrip: () -> Unit,
+              onNavigateTo: (AppScreenRoute) -> Unit,
+              onRequestGpsPermission: () -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              val context = LocalContext.current
+              var carBrand by remember { mutableStateOf(storage?.carBrandName ?: "Ford") }
+              var isLibraryMode by remember { mutableStateOf(true) }
+
+              val rawSpeed = telemetry.speedKmh ?: 0
+              val useMph = storage?.useMphUnit == true
+              val displaySpeed = if (useMph) (rawSpeed * 0.621371f).toInt() else rawSpeed
+              val unitText = if (useMph) "MPH" else "كم/س"
+
+              Column(
+                  modifier = Modifier.fillMaxSize(),
+                  verticalArrangement = Arrangement.spacedBy(6.dp)
+              ) {
+                  // 1. الشريط العلوي البانورامي (شعار السيارة يمين + كبسولة الموقع والطقس وسط + 4 أيقونات يسار)
+                  Row(
+                      modifier = Modifier.fillMaxWidth().height(44.dp),
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                      verticalAlignment = Alignment.CenterVertically
+                  ) {
+                      Surface(
+                          color = Color(0xFF0B3B75),
+                          shape = RoundedCornerShape(50),
+                          border = BorderStroke(2.dp, Color(0xFFE2E8F0)),
+                          modifier = Modifier
+                              .width(102.dp)
+                              .height(38.dp)
+                              .clickable {
+                                  carBrand = storage?.cycleCarBrand() ?: "KIA"
+                              }
+                      ) {
+                          Box(contentAlignment = Alignment.Center) {
+                              Text(
+                                  text = carBrand,
+                                  color = Color.White,
+                                  fontSize = 17.sp,
+                                  fontWeight = FontWeight.Black,
+                                  fontStyle = FontStyle.Italic,
+                                  fontFamily = FontFamily.Serif
+                              )
+                          }
+                      }
+
+                      Surface(
+                          color = preset.card.copy(alpha = 0.80f),
+                          shape = RoundedCornerShape(DesignTokens.RadiusPill),
+                          border = BorderStroke(1.dp, preset.border),
+                          modifier = Modifier.height(38.dp).clickable { onNavigateTo(AppScreenRoute.WEATHER) }
+                      ) {
+                          Row(
+                              modifier = Modifier.padding(horizontal = 14.dp),
+                              verticalAlignment = Alignment.CenterVertically,
+                              horizontalArrangement = Arrangement.spacedBy(8.dp)
+                          ) {
+                              val locNote = if (telemetry.speedKmh != null) "موقعك الحالي · صافٍ (±${telemetry.accuracyMeters ?: 5}م)" else "موقعك الحالي · صافٍ"
+                              Text(locNote, fontSize = 11.sp, color = DesignTokens.TextPrimary, fontWeight = FontWeight.SemiBold)
+                              Box(Modifier.width(1.dp).height(14.dp).background(preset.border))
+                              Text(if (hardware.hasAmbientTempSensor) "25°" else "--°", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                              Icon(Icons.Default.NightsStay, contentDescription = null, tint = Color(0xFFFACC15), modifier = Modifier.size(16.dp))
+                          }
+                      }
+
+                      Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                          TopSquareIconButton(
+                              icon = Icons.Default.LocationOn,
+                              isActiveGlow = telemetry.speedKmh != null || hardware.isGpsEnabled,
+                              onClick = onRequestGpsPermission
+                          )
+                          TopSquareIconButton(
+                              icon = Icons.Default.Bluetooth,
+                              isActiveGlow = hardware.isBluetoothEnabled,
+                              onClick = { runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+                          )
+                          TopSquareIconButton(
+                              icon = Icons.Default.Wifi,
+                              isActiveGlow = hardware.isInternetConnected,
+                              onClick = { runCatching { context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+                          )
+                          TopSquareIconButton(
+                              icon = Icons.Default.Settings,
+                              isActiveGlow = false,
+                              onClick = { onNavigateTo(AppScreenRoute.SETTINGS_MAIN) }
+                          )
+                      }
+                  }
+
+                  // 2. المنطقة الوسطى (تتكيف بين الأفقي 3 أعمدة والرأسي عمودين)
+                  if (metrics.isLandscape) {
+                      Row(
+                          modifier = Modifier.weight(1f).fillMaxWidth(),
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          if (storage?.isCardVisible("prayer") != false) {
+                              PrayerSideColumn(
+                                  prayers = prayers,
+                                  modifier = Modifier.weight(0.27f).fillMaxHeight(),
+                                  onClick = { onNavigateTo(AppScreenRoute.PRAYER_TIMES) }
+                              )
+                              Box(Modifier.width(1.dp).fillMaxHeight(0.82f).background(preset.border.copy(alpha = 0.5f)))
+                          }
+
+                          Box(
+                              modifier = Modifier.weight(0.46f).fillMaxHeight().clickable { onNavigateTo(AppScreenRoute.VEHICLE_INFO) },
+                              contentAlignment = Alignment.Center
+                          ) {
+                              PanoramicSpeedometerWithCar(
+                                  speed = displaySpeed,
+                                  unitText = unitText,
+                                  circularStyle = storage?.circularGaugeStyle != false,
+                                  modifier = Modifier.fillMaxSize()
+                              )
+                          }
+
+                          if (storage?.isCardVisible("trip") != false) {
+                              Box(Modifier.width(1.dp).fillMaxHeight(0.82f).background(preset.border.copy(alpha = 0.5f)))
+                              ClockAndTripSideColumn(
+                                  timeFormatted = timeFormatted,
+                                  amPmArabic = amPmArabic,
+                                  gregorianDate = gregorianDate,
+                                  hijriDate = hijriDate,
+                                  showHijri = storage?.showHijriDate != false,
+                                  telemetry = telemetry,
+                                  modifier = Modifier.weight(0.27f).fillMaxHeight(),
+                                  onClickTrip = { onNavigateTo(AppScreenRoute.TRIP_DATA) }
+                              )
+                          }
+                      }
+                  } else {
+                      // تخطيط الوضع الرأسي (Portrait) دون قص أو تداخل
+                      Column(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                          Box(modifier = Modifier.weight(0.48f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                              PanoramicSpeedometerWithCar(
+                                  speed = displaySpeed,
+                                  unitText = unitText,
+                                  circularStyle = storage?.circularGaugeStyle != false,
+                                  modifier = Modifier.fillMaxSize()
+                              )
+                          }
+                          Row(modifier = Modifier.weight(0.52f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              PrayerSideColumn(
+                                  prayers = prayers,
+                                  modifier = Modifier.weight(1f).fillMaxHeight(),
+                                  onClick = { onNavigateTo(AppScreenRoute.PRAYER_TIMES) }
+                              )
+                              Box(Modifier.width(1.dp).fillMaxHeight(0.9f).background(preset.border.copy(alpha = 0.5f)))
+                              ClockAndTripSideColumn(
+                                  timeFormatted = timeFormatted,
+                                  amPmArabic = amPmArabic,
+                                  gregorianDate = gregorianDate,
+                                  hijriDate = hijriDate,
+                                  showHijri = storage?.showHijriDate != false,
+                                  telemetry = telemetry,
+                                  modifier = Modifier.weight(1f).fillMaxHeight(),
+                                  onClickTrip = { onNavigateTo(AppScreenRoute.TRIP_DATA) }
+                              )
+                          }
+                      }
+                  }
+
+                  // 3. شريط المشغل الصوتي الزجاجي العريض المطابق للصورة الأولى
+                  if (storage?.isCardVisible("music") != false) {
+                      Surface(
+                          color = preset.card.copy(alpha = 0.82f),
+                          shape = RoundedCornerShape(22.dp),
+                          border = BorderStroke(1.2.dp, preset.border.copy(alpha = 0.85f)),
+                          modifier = Modifier.fillMaxWidth().height(60.dp)
+                      ) {
+                          Row(
+                              modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                              horizontalArrangement = Arrangement.SpaceBetween,
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Row(
+                                  modifier = Modifier.weight(0.38f).clickable { onNavigateTo(AppScreenRoute.MUSIC_PLAYER) },
+                                  verticalAlignment = Alignment.CenterVertically,
+                                  horizontalArrangement = Arrangement.spacedBy(10.dp)
+                              ) {
+                                  Surface(
+                                      color = Color(0xFF1E293B),
+                                      shape = RoundedCornerShape(12.dp),
+                                      border = BorderStroke(1.dp, preset.border),
+                                      modifier = Modifier.size(42.dp)
+                                  ) {
+                                      Box(contentAlignment = Alignment.Center) {
+                                          Icon(Icons.Default.WbSunny, contentDescription = null, tint = DesignTokens.AmberGold, modifier = Modifier.size(20.dp))
+                                      }
+                                  }
+                                  Column {
+                                      Text(currentTrackTitle, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary, maxLines = 1)
+                                      Text(currentTrackArtist, fontSize = 11.sp, color = DesignTokens.TextSecondary, maxLines = 1)
+                                  }
+                              }
+
+                              Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                  IconButton(onClick = onNextTrack) {
+                                      Icon(Icons.Default.SkipNext, contentDescription = "التالي", tint = Color.White, modifier = Modifier.size(26.dp))
+                                  }
+                                  Surface(
+                                      shape = CircleShape,
+                                      color = DesignTokens.AmberGold,
+                                      modifier = Modifier.size(44.dp).clickable { onToggleMusicPlay() }
+                                  ) {
+                                      Box(contentAlignment = Alignment.Center) {
+                                          Icon(
+                                              imageVector = if (isPlayingMusic) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                              contentDescription = "تشغيل",
+                                              tint = Color.Black,
+                                              modifier = Modifier.size(26.dp)
+                                          )
+                                      }
+                                  }
+                                  IconButton(onClick = onPrevTrack) {
+                                      Icon(Icons.Default.SkipPrevious, contentDescription = "السابق", tint = Color.White, modifier = Modifier.size(26.dp))
+                                  }
+                              }
+
+                              Surface(
+                                  color = preset.background.copy(alpha = 0.75f),
+                                  shape = RoundedCornerShape(50),
+                                  border = BorderStroke(1.dp, preset.border),
+                                  modifier = Modifier.height(40.dp)
+                              ) {
+                                  Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(4.dp)) {
+                                      Surface(
+                                          color = if (!isLibraryMode) DesignTokens.AmberGold else Color.Transparent,
+                                          shape = RoundedCornerShape(50),
+                                          modifier = Modifier.clickable {
+                                              isLibraryMode = false
+                                              onNavigateTo(AppScreenRoute.RADIO)
+                                          }
+                                      ) {
+                                          Text(
+                                              text = "الراديو",
+                                              color = if (!isLibraryMode) Color.Black else DesignTokens.TextPrimary,
+                                              fontWeight = FontWeight.Bold,
+                                              fontSize = 11.sp,
+                                              modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                                          )
+                                      }
+                                      Surface(
+                                          color = if (isLibraryMode) DesignTokens.AmberGold else Color.Transparent,
+                                          shape = RoundedCornerShape(50),
+                                          modifier = Modifier.clickable {
+                                              isLibraryMode = true
+                                              onNavigateTo(AppScreenRoute.SONG_LIST)
+                                          }
+                                      ) {
+                                          Text(
+                                              text = "المكتبة",
+                                              color = if (isLibraryMode) Color.Black else DesignTokens.TextPrimary,
+                                              fontWeight = FontWeight.Bold,
+                                              fontSize = 11.sp,
+                                              modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                                          )
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          private fun PrayerSideColumn(
+              prayers: DailyPrayerSchedule,
+              modifier: Modifier,
+              onClick: () -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              Column(
+                  modifier = modifier.clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 2.dp),
+                  verticalArrangement = Arrangement.SpaceBetween
+              ) {
+                  Column {
+                      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                          Icon(Icons.Default.Mosque, contentDescription = null, tint = DesignTokens.TextPrimary, modifier = Modifier.size(16.dp))
+                          Text("أوقات الصلاة", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                      }
+                      Text("موقعك الحالي · الصلاة القادمة", fontSize = 10.sp, color = DesignTokens.TextMuted)
+                      Text(prayers.nextPrayerName, fontSize = 22.sp, fontWeight = FontWeight.Black, color = preset.primary)
+                      Text(prayers.nextPrayerTime, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                      Text(prayers.remainingCountdownText, fontSize = 10.sp, color = DesignTokens.TextSecondary)
+                  }
+                  Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                      PrayerRowItem("الفجر", prayers.fajr, prayers.nextPrayerName == "الفجر")
+                      PrayerRowItem("الظهر", prayers.dhuhr, prayers.nextPrayerName == "الظهر")
+                      PrayerRowItem("العصر", prayers.asr, prayers.nextPrayerName == "العصر")
+                      PrayerRowItem("المغرب", prayers.maghrib, prayers.nextPrayerName == "المغرب")
+                      PrayerRowItem("العشاء", prayers.isha, prayers.nextPrayerName == "العشاء")
+                  }
+              }
+          }
+
+          @Composable
+          private fun ClockAndTripSideColumn(
+              timeFormatted: String,
+              amPmArabic: String,
+              gregorianDate: String,
+              hijriDate: String,
+              showHijri: Boolean,
+              telemetry: LiveDrivingTelemetry,
+              modifier: Modifier,
+              onClickTrip: () -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              Column(
+                  modifier = modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                  verticalArrangement = Arrangement.SpaceBetween
+              ) {
+                  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                      Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.Center) {
+                          Text(timeFormatted, fontSize = 32.sp, fontWeight = FontWeight.Black, color = DesignTokens.TextPrimary)
+                          Spacer(Modifier.width(5.dp))
+                          Text(amPmArabic, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = preset.primary, modifier = Modifier.padding(bottom = 4.dp))
+                      }
+                      Text(gregorianDate, fontSize = 11.sp, color = DesignTokens.TextSecondary, maxLines = 1)
+                      if (showHijri) {
+                          Text(hijriDate, fontSize = 10.sp, color = preset.primary, maxLines = 1)
+                      }
+                  }
+
+                  Box(Modifier.fillMaxWidth().height(1.dp).background(preset.border.copy(alpha = 0.5f)))
+
+                  Column(
+                      modifier = Modifier.fillMaxWidth().clickable(onClick = onClickTrip),
+                      verticalArrangement = Arrangement.spacedBy(3.dp)
+                  ) {
+                      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                          Text("ملخص الرحلة", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                          Icon(Icons.Default.LocationOn, contentDescription = null, tint = preset.primary, modifier = Modifier.size(16.dp))
+                      }
+                      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                          Text("المسافة", fontSize = 11.sp, color = DesignTokens.TextSecondary)
+                          Text(String.format(Locale.US, "%.1f كم", telemetry.distanceKm), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                      }
+                      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                          Text("مدة القيادة", fontSize = 11.sp, color = DesignTokens.TextSecondary)
+                          Text("${telemetry.durationMinutes} دقيقة", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          private fun TopSquareIconButton(icon: ImageVector, isActiveGlow: Boolean, onClick: () -> Unit) {
+              val preset = LocalCockpitPreset.current
+              Surface(
+                  color = preset.card.copy(alpha = 0.85f),
+                  shape = RoundedCornerShape(12.dp),
+                  border = BorderStroke(if (isActiveGlow) 2.dp else 1.dp, if (isActiveGlow) preset.primary else preset.border),
+                  modifier = Modifier.size(38.dp).clickable(onClick = onClick)
+              ) {
+                  Box(contentAlignment = Alignment.Center) {
+                      Icon(icon, contentDescription = null, tint = if (isActiveGlow) preset.primary else DesignTokens.TextPrimary, modifier = Modifier.size(19.dp))
+                  }
+              }
+          }
+
+          @Composable
+          private fun PrayerRowItem(name: String, time: String, isNext: Boolean) {
+              val preset = LocalCockpitPreset.current
+              Surface(
+                  color = if (isNext) preset.primary.copy(alpha = 0.18f) else Color.Transparent,
+                  shape = RoundedCornerShape(6.dp),
+                  modifier = Modifier.fillMaxWidth()
+              ) {
+                  Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 1.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                      Text(name, fontSize = 10.sp, fontWeight = if (isNext) FontWeight.Bold else FontWeight.Normal, color = if (isNext) preset.primary else DesignTokens.TextSecondary)
+                      Text(time, fontSize = 10.sp, fontWeight = if (isNext) FontWeight.Bold else FontWeight.Normal, color = if (isNext) DesignTokens.TextPrimary else DesignTokens.TextSecondary)
+                  }
+              }
+          }
+
+          @Composable
+          fun PanoramicSpeedometerWithCar(
+              speed: Int,
+              unitText: String,
+              circularStyle: Boolean = true,
+              modifier: Modifier = Modifier
+          ) {
+              val preset = LocalCockpitPreset.current
+              Box(modifier = modifier, contentAlignment = Alignment.Center) {
+                  if (circularStyle) {
+                      Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
+                          val w = size.width
+                          val h = size.height
+                          val diameter = minOf(w * 0.88f, h * 0.96f)
+                          val radius = diameter / 2f
+                          val cx = w / 2f
+                          val cy = h * 0.56f
+
+                          val startAngle = 150f
+                          val sweepAngle = 240f
+                          val topLeft = Offset(cx - radius, cy - radius)
+
+                          drawArc(
+                              color = Color(0xFF17374B),
+                              startAngle = startAngle,
+                              sweepAngle = sweepAngle,
+                              useCenter = false,
+                              topLeft = topLeft,
+                              size = Size(diameter, diameter),
+                              style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round)
+                          )
+
+                          val speedFraction = (speed.coerceIn(0, 260) / 260f)
+                          drawArc(
+                              brush = Brush.sweepGradient(listOf(preset.primary, Color(0xFF38BDF8), preset.primary)),
+                              startAngle = startAngle,
+                              sweepAngle = sweepAngle * speedFraction,
+                              useCenter = false,
+                              topLeft = topLeft,
+                              size = Size(diameter, diameter),
+                              style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round)
+                          )
+
+                          val paint = android.graphics.Paint().apply {
+                              color = android.graphics.Color.WHITE
+                              textSize = 9.dp.toPx()
+                              textAlign = android.graphics.Paint.Align.CENTER
+                              isAntiAlias = true
+                              typeface = android.graphics.Typeface.DEFAULT_BOLD
+                          }
+
+                          val totalTicks = 26
+                          for (i in 0..totalTicks) {
+                              val stepSpeed = i * 10
+                              val angleDeg = startAngle + (i.toFloat() / totalTicks) * sweepAngle
+                              val rad = Math.toRadians(angleDeg.toDouble())
+                              val isMajor = stepSpeed % 20 == 0
+
+                              val outerR = radius - 5.dp.toPx()
+                              val innerR = outerR - if (isMajor) 8.dp.toPx() else 4.dp.toPx()
+
+                              val sx = cx + (outerR * cos(rad)).toFloat()
+                              val sy = cy + (outerR * sin(rad)).toFloat()
+                              val ex = cx + (innerR * cos(rad)).toFloat()
+                              val ey = cy + (innerR * sin(rad)).toFloat()
+
+                              drawLine(
+                                  color = if (stepSpeed <= speed) preset.primary else Color.White.copy(alpha = 0.7f),
+                                  start = Offset(sx, sy),
+                                  end = Offset(ex, ey),
+                                  strokeWidth = if (isMajor) 2.dp.toPx() else 1.dp.toPx()
+                              )
+
+                              if (isMajor) {
+                                  val textR = innerR - 12.dp.toPx()
+                                  val tx = cx + (textR * cos(rad)).toFloat()
+                                  val ty = cy + (textR * sin(rad)).toFloat() + 3.dp.toPx()
+                                  drawContext.canvas.nativeCanvas.drawText(stepSpeed.toString(), tx, ty, paint)
+                              }
+                          }
+
+                          val carW = radius * 0.54f
+                          val carH = radius * 0.32f
+                          val carLeft = cx - carW / 2f
+                          val carTop = cy + radius * 0.16f
+
+                          drawRoundRect(
+                              color = Color.Black.copy(alpha = 0.55f),
+                              topLeft = Offset(carLeft - 4.dp.toPx(), carTop + carH - 5.dp.toPx()),
+                              size = Size(carW + 8.dp.toPx(), 9.dp.toPx()),
+                              cornerRadius = CornerRadius(8f, 8f)
+                          )
+                          drawRoundRect(Color(0xFF0F172A), Offset(carLeft + 2.dp.toPx(), carTop + carH * 0.65f), Size(carW * 0.18f, carH * 0.42f), CornerRadius(4f, 4f))
+                          drawRoundRect(Color(0xFF0F172A), Offset(carLeft + carW * 0.82f - 2.dp.toPx(), carTop + carH * 0.65f), Size(carW * 0.18f, carH * 0.42f), CornerRadius(4f, 4f))
+
+                          val bodyPath = Path().apply {
+                              moveTo(carLeft + carW * 0.18f, carTop)
+                              lineTo(carLeft + carW * 0.82f, carTop)
+                              lineTo(carLeft + carW, carTop + carH * 0.45f)
+                              lineTo(carLeft + carW, carTop + carH * 0.85f)
+                              lineTo(carLeft, carTop + carH * 0.85f)
+                              lineTo(carLeft, carTop + carH * 0.45f)
+                              close()
+                          }
+                          drawPath(bodyPath, color = Color(0xFFF1F5F9))
+
+                          val glassPath = Path().apply {
+                              moveTo(carLeft + carW * 0.23f, carTop + carH * 0.08f)
+                              lineTo(carLeft + carW * 0.77f, carTop + carH * 0.08f)
+                              lineTo(carLeft + carW * 0.88f, carTop + carH * 0.40f)
+                              lineTo(carLeft + carW * 0.12f, carTop + carH * 0.40f)
+                              close()
+                          }
+                          drawPath(glassPath, color = Color(0xFF1E293B))
+
+                          drawRoundRect(Color(0xFFEF4444), Offset(carLeft + carW * 0.06f, carTop + carH * 0.48f), Size(carW * 0.22f, carH * 0.16f), CornerRadius(4f, 4f))
+                          drawRoundRect(Color(0xFFEF4444), Offset(carLeft + carW * 0.72f, carTop + carH * 0.48f), Size(carW * 0.22f, carH * 0.16f), CornerRadius(4f, 4f))
+                          drawRoundRect(Color(0xFF0F172A), Offset(carLeft + carW * 0.38f, carTop + carH * 0.62f), Size(carW * 0.24f, carH * 0.16f), CornerRadius(3f, 3f))
+                      }
+                  }
+
+                  Column(
+                      horizontalAlignment = Alignment.CenterHorizontally,
+                      modifier = Modifier.offset(y = if (circularStyle) (-14).dp else 0.dp)
+                  ) {
+                      Text("$speed", fontSize = if (circularStyle) 44.sp else 64.sp, fontWeight = FontWeight.Black, color = Color.White)
+                      Text(unitText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextSecondary)
+                  }
+              }
+          }
+          EOF
+
+          # 11. NavigationAndWeatherScreens.kt (Screens #2 Navigation & #18 Weather)
+          cat << 'EOF' > "$BASE/ui/screens/NavigationAndWeatherScreens.kt"
+          package com.universal.carlauncher.ui.screens
+
+          import android.content.Intent
+          import android.net.Uri
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.universal.carlauncher.core.designsystem.DesignTokens
+          import com.universal.carlauncher.core.designsystem.LocalCockpitPreset
+          import com.universal.carlauncher.core.hardware.HardwareDiagnosticReport
+
+          @Composable
+          fun NavigationScreen(telemetry: LiveDrivingTelemetry, lat: Double?, lon: Double?) {
+              val preset = LocalCockpitPreset.current
+              val context = LocalContext.current
+              var zoomLevel by remember { mutableIntStateOf(15) }
+
+              Row(Modifier.fillMaxSize().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                  // لوحة الخريطة التفاعلية والإحداثيات
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      shape = RoundedCornerShape(DesignTokens.RadiusL),
+                      modifier = Modifier.weight(0.68f).fillMaxHeight()
+                  ) {
+                      Box(Modifier.fillMaxSize().padding(16.dp)) {
+                          Column(
+                              Modifier.align(Alignment.Center),
+                              horizontalAlignment = Alignment.CenterHorizontally,
+                              verticalArrangement = Arrangement.spacedBy(8.dp)
+                          ) {
+                              Icon(Icons.Default.Explore, contentDescription = null, tint = preset.primary, modifier = Modifier.size(54.dp))
+                              Text(
+                                  text = if (lat != null && lon != null) "الموقع الحالي: ${"%.5f".format(lat)} , ${"%.5f".format(lon)}" else "في انتظار التقاط إحداثيات الأقمار الصناعية GPS",
+                                  style = MaterialTheme.typography.titleLarge,
+                                  color = DesignTokens.TextPrimary
+                              )
+                              Text(
+                                  text = "حالة المستشعر: ${telemetry.gpsStatusMessage} • مستوى التقريب: ${zoomLevel}x",
+                                  color = DesignTokens.TextSecondary,
+                                  fontSize = 12.sp
+                              )
+                              Button(
+                                  onClick = {
+                                      val geoUri = if (lat != null && lon != null) Uri.parse("geo:$lat,$lon?z=$zoomLevel") else Uri.parse("geo:0,0?q=")
+                                      runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, geoUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                                  },
+                                  colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold)
+                              ) {
+                                  Icon(Icons.Default.Map, contentDescription = null, tint = Color.Black)
+                                  Spacer(Modifier.width(6.dp))
+                                  Text("فتح تطبيق الخرائط الخارجي للملاحة الصوتية", color = Color.Black, fontWeight = FontWeight.Bold)
+                              }
+                          }
+
+                          // أزرار التكبير والتصغير وإعادة التمركز
+                          Column(
+                              Modifier.align(Alignment.CenterStart),
+                              verticalArrangement = Arrangement.spacedBy(8.dp)
+                          ) {
+                              FilledIconButton(onClick = { zoomLevel = (zoomLevel + 1).coerceAtMost(20) }) {
+                                  Icon(Icons.Default.Add, contentDescription = "تكبير")
+                              }
+                              FilledIconButton(onClick = { zoomLevel = (zoomLevel - 1).coerceAtLeast(5) }) {
+                                  Icon(Icons.Default.Remove, contentDescription = "تصغير")
+                              }
+                              FilledIconButton(onClick = { zoomLevel = 16 }) {
+                                  Icon(Icons.Default.MyLocation, contentDescription = "موقعي")
+                              }
+                          }
+                      }
+                  }
+
+                  // عمود بيانات الملاحة والسرعة الحية
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      shape = RoundedCornerShape(DesignTokens.RadiusL),
+                      modifier = Modifier.weight(0.32f).fillMaxHeight()
+                  ) {
+                      Column(
+                          Modifier.fillMaxSize().padding(14.dp),
+                          verticalArrangement = Arrangement.SpaceBetween
+                      ) {
+                          Text("بيانات الملاحة المباشرة", style = MaterialTheme.typography.titleLarge, color = preset.primary)
+                          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                              NavInfoItem("سرعة السيارة", "${telemetry.speedKmh ?: 0} كم/س")
+                              NavInfoItem("زاوية الاتجاه", telemetry.bearingDegrees?.let { "$it°" } ?: "بانتظار الحركة")
+                              NavInfoItem("المسافة المقطوعة", String.format("%.2f كم", telemetry.distanceKm))
+                              NavInfoItem("زمن الرحلة", telemetry.durationFormatted)
+                          }
+                          Text("الوضع: Offline-First (لا يتم ادعاء ملاحة داخلية بدون محرك خرائط)", fontSize = 10.sp, color = DesignTokens.TextMuted)
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          private fun NavInfoItem(label: String, value: String) {
+              val preset = LocalCockpitPreset.current
+              Surface(color = preset.cardElevated, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+                  Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                      Text(label, fontSize = 12.sp, color = DesignTokens.TextSecondary)
+                      Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                  }
+              }
+          }
+
+          @Composable
+          fun WeatherScreen(hardware: HardwareDiagnosticReport, lat: Double?, lon: Double?) {
+              val preset = LocalCockpitPreset.current
+              var autoRefresh by remember { mutableStateOf(true) }
+
+              Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      shape = RoundedCornerShape(DesignTokens.RadiusL),
+                      modifier = Modifier.fillMaxWidth()
+                  ) {
+                      Row(
+                          Modifier.fillMaxWidth().padding(20.dp),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                              Text(
+                                  text = if (lat != null && lon != null) "موقعك الجغرافي الحالي (${"%.2f".format(lat)}, ${"%.2f".format(lon)})" else "الموقع الحالي (بانتظار GPS)",
+                                  style = MaterialTheme.typography.titleLarge,
+                                  color = preset.primary
+                              )
+                              Text(
+                                  text = when {
+                                      hardware.hasAmbientTempSensor -> "قراءة حساس الحرارة المحيطة بالسيارة متاحة"
+                                      !hardware.isInternetConnected -> "حالة الطقس: الجهاز في وضع Offline (لا يتم عرض بيانات طقس وهمية)"
+                                      else -> "متصل بالشبكة — يتطلب ربط مفتاح خدمة طقس خارجية لجلب التوقعات"
+                                  },
+                                  color = DesignTokens.TextSecondary,
+                                  fontSize = 13.sp
+                              )
+                              Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                  Text("العظمى: --°", color = DesignTokens.TextMuted, fontSize = 12.sp)
+                                  Text("الصغرى: --°", color = DesignTokens.TextMuted, fontSize = 12.sp)
+                              }
+                          }
+                          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                              Icon(Icons.Default.NightsStay, contentDescription = null, tint = DesignTokens.AmberGold, modifier = Modifier.size(48.dp))
+                              Text(if (hardware.hasAmbientTempSensor) "25°C" else "--°C", fontSize = 32.sp, fontWeight = FontWeight.Black, color = DesignTokens.TextPrimary)
+                          }
+                      }
+                  }
+
+                  Surface(color = preset.card.copy(alpha = 0.85f), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                      Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                          Text("تحديث تلقائي لبيانات الطقس عند توفر الإنترنت", color = DesignTokens.TextPrimary)
+                          Switch(checked = autoRefresh, onCheckedChange = { autoRefresh = it })
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # 12. MediaAndRadioScreens.kt (Screens #3 Music Player, #4 Song List, #5 FM Radio)
+          cat << 'EOF' > "$BASE/ui/screens/MediaAndRadioScreens.kt"
+          package com.universal.carlauncher.ui.screens
+
+          import android.net.Uri
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.universal.carlauncher.core.designsystem.DesignTokens
+          import com.universal.carlauncher.core.designsystem.LocalCockpitPreset
+          import com.universal.carlauncher.ui.navigation.AppScreenRoute
+
+          data class LocalAudioTrack(
+              val id: Long,
+              val title: String,
+              val artist: String,
+              val album: String = "الألبوم المحلي",
+              val folder: String = "ذاكرة الشاشة",
+              val uri: Uri = Uri.EMPTY
+          )
+
+          @Composable
+          fun MusicPlayerFullScreen(
+              tracks: List<LocalAudioTrack>,
+              currentIndex: Int,
+              isPlaying: Boolean,
+              onTogglePlay: () -> Unit,
+              onNext: () -> Unit,
+              onPrev: () -> Unit,
+              onOpenSongList: () -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              val currentTrack = tracks.getOrNull(currentIndex)
+              var progress by remember { mutableFloatStateOf(0.35f) }
+              var isShuffle by remember { mutableStateOf(false) }
+              var isRepeat by remember { mutableStateOf(false) }
+
+              Card(
+                  colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.90f)),
+                  border = BorderStroke(1.dp, preset.border),
+                  shape = RoundedCornerShape(DesignTokens.RadiusL),
+                  modifier = Modifier.fillMaxSize().padding(6.dp)
+              ) {
+                  Column(
+                      Modifier.fillMaxSize().padding(18.dp),
+                      verticalArrangement = Arrangement.SpaceBetween
+                  ) {
+                      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                              Surface(
+                                  color = preset.cardElevated,
+                                  shape = RoundedCornerShape(18.dp),
+                                  border = BorderStroke(1.5.dp, preset.primary),
+                                  modifier = Modifier.size(72.dp)
+                              ) {
+                                  Box(contentAlignment = Alignment.Center) {
+                                      Icon(Icons.Default.Album, contentDescription = null, tint = DesignTokens.AmberGold, modifier = Modifier.size(40.dp))
+                                  }
+                              }
+                              Column {
+                                  Text(currentTrack?.title ?: "لا يوجد ملف صوتي قيد التشغيل", style = MaterialTheme.typography.headlineMedium, color = DesignTokens.TextPrimary, maxLines = 1)
+                                  Text(currentTrack?.artist ?: "افتح قائمة الأغاني لاختيار مقطع", style = MaterialTheme.typography.titleMedium, color = preset.primary)
+                                  Text(currentTrack?.album ?: "المكتبة الصوتية المحلية", fontSize = 12.sp, color = DesignTokens.TextSecondary)
+                              }
+                          }
+                          Button(
+                              onClick = onOpenSongList,
+                              colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold)
+                          ) {
+                              Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.Black)
+                              Spacer(Modifier.width(6.dp))
+                              Text("قائمة الأغاني والمجلدات (${tracks.size})", color = Color.Black, fontWeight = FontWeight.Bold)
+                          }
+                      }
+
+                      Column {
+                          Slider(
+                              value = progress,
+                              onValueChange = { progress = it },
+                              colors = SliderDefaults.colors(thumbColor = DesignTokens.AmberGold, activeTrackColor = preset.primary)
+                          )
+                          Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                              Text("01:24", fontSize = 11.sp, color = DesignTokens.TextSecondary)
+                              Text("03:58", fontSize = 11.sp, color = DesignTokens.TextSecondary)
+                          }
+                      }
+
+                      Row(
+                          Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceEvenly,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          IconButton(onClick = { isShuffle = !isShuffle }) {
+                              Icon(Icons.Default.Shuffle, contentDescription = "عشوائي", tint = if (isShuffle) preset.primary else DesignTokens.TextMuted)
+                          }
+                          IconButton(onClick = onNext) {
+                              Icon(Icons.Default.SkipNext, contentDescription = "التالي", tint = Color.White, modifier = Modifier.size(34.dp))
+                          }
+                          Surface(
+                              shape = CircleShape,
+                              color = DesignTokens.AmberGold,
+                              modifier = Modifier.size(62.dp).clickable { onTogglePlay() }
+                          ) {
+                              Box(contentAlignment = Alignment.Center) {
+                                  Icon(
+                                      imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                      contentDescription = "تشغيل/إيقاف",
+                                      tint = Color.Black,
+                                      modifier = Modifier.size(34.dp)
+                                  )
+                              }
+                          }
+                          IconButton(onClick = onPrev) {
+                              Icon(Icons.Default.SkipPrevious, contentDescription = "السابق", tint = Color.White, modifier = Modifier.size(34.dp))
+                          }
+                          IconButton(onClick = { isRepeat = !isRepeat }) {
+                              Icon(Icons.Default.Repeat, contentDescription = "تكرار", tint = if (isRepeat) preset.primary else DesignTokens.TextMuted)
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun SongListScreen(
+              tracks: List<LocalAudioTrack>,
+              currentIndex: Int,
+              onSelectTrack: (Int) -> Unit,
+              onRefreshLibrary: () -> Unit,
+              onBackToPlayer: () -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              var query by remember { mutableStateOf("") }
+              var selectedTab by remember { mutableStateOf("كل الأغاني") }
+              val tabs = listOf("كل الأغاني", "الألبومات", "الفنانين", "المجلدات", "المفضلة", "الأخيرة")
+
+              val filtered = tracks.filter {
+                  it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true)
+              }
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                          tabs.forEach { tab ->
+                              FilterChip(
+                                  selected = selectedTab == tab,
+                                  onClick = { selectedTab = tab },
+                                  label = { Text(tab, fontSize = 11.sp) }
+                              )
+                          }
+                      }
+                      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                          OutlinedButton(onClick = onRefreshLibrary) { Text("فحص الذاكرة", fontSize = 11.sp) }
+                          Button(onClick = onBackToPlayer, colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold)) {
+                              Text("المشغل", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                          }
+                      }
+                  }
+
+                  OutlinedTextField(
+                      value = query,
+                      onValueChange = { query = it },
+                      placeholder = { Text("ابحث في $selectedTab...") },
+                      modifier = Modifier.fillMaxWidth(),
+                      singleLine = true
+                  )
+
+                  if (filtered.isEmpty()) {
+                      Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                          Text("لا توجد ملفات صوتية محلية مطابقة للبحث", color = DesignTokens.TextSecondary)
+                      }
+                  } else {
+                      LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                          items(filtered) { track ->
+                              val idx = tracks.indexOf(track)
+                              Surface(
+                                  color = if (idx == currentIndex) preset.primary.copy(alpha = 0.25f) else preset.card.copy(alpha = 0.85f),
+                                  shape = RoundedCornerShape(12.dp),
+                                  border = BorderStroke(1.dp, if (idx == currentIndex) preset.primary else preset.border),
+                                  modifier = Modifier.fillMaxWidth().clickable {
+                                      onSelectTrack(idx)
+                                      onBackToPlayer()
+                                  }
+                              ) {
+                                  Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                      Column(Modifier.weight(1f)) {
+                                          Text(track.title, color = DesignTokens.TextPrimary, fontWeight = FontWeight.Bold, maxLines = 1)
+                                          Text("${track.artist} • ${track.album}", color = DesignTokens.TextSecondary, fontSize = 11.sp)
+                                      }
+                                      Icon(Icons.Default.PlayArrow, contentDescription = null, tint = preset.primary)
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun RadioFmScreen() {
+              val preset = LocalCockpitPreset.current
+              var freq by remember { mutableDoubleStateOf(98.2) }
+              val presets = listOf(88.2 to "إذاعة القرآن الكريم", 98.2 to "نجوم FM", 100.6 to "راديو مصر", 104.2 to "ميجا FM", 105.8 to "نغم FM")
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Surface(
+                      color = DesignTokens.StatusWarning.copy(alpha = 0.16f),
+                      border = BorderStroke(1.dp, DesignTokens.StatusWarning),
+                      shape = RoundedCornerShape(12.dp),
+                      modifier = Modifier.fillMaxWidth()
+                  ) {
+                      Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                          Icon(Icons.Default.WarningAmber, contentDescription = null, tint = DesignTokens.StatusWarning)
+                          Text(
+                              text = "حالة توافق الراديو: الجهاز الحالي لا يوفر واجهة FM Tuner قياسية موثقة (NOT SUPPORTED بدون شريحة الشركة المصنعة).",
+                              color = DesignTokens.StatusWarning,
+                              fontSize = 12.sp
+                          )
+                      }
+                  }
+
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      modifier = Modifier.weight(1f).fillMaxWidth()
+                  ) {
+                      Column(
+                          Modifier.fillMaxSize().padding(16.dp),
+                          horizontalAlignment = Alignment.CenterHorizontally,
+                          verticalArrangement = Arrangement.SpaceAround
+                      ) {
+                          Text("${"%.1f".format(freq)} MHz", fontSize = 44.sp, fontWeight = FontWeight.Black, color = preset.primary)
+                          Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                              Button(onClick = { freq = (freq - 0.5).coerceAtLeast(87.5) }) { Text("<< مسح") }
+                              Button(onClick = { freq = (freq - 0.1).coerceAtLeast(87.5) }) { Text("- 0.1") }
+                              Button(onClick = { freq = (freq + 0.1).coerceAtMost(108.0) }) { Text("+ 0.1") }
+                              Button(onClick = { freq = (freq + 0.5).coerceAtMost(108.0) }) { Text("مسح >>") }
+                          }
+                          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              presets.forEach { (f, name) ->
+                                  FilterChip(selected = freq == f, onClick = { freq = f }, label = { Text("$name ($f)") })
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # 13. PhoneAndAppsScreens.kt (Screens #6 Phone Dialer, #7 Contacts, #8 Installed Apps, #9 Favorite Apps)
+          cat << 'EOF' > "$BASE/ui/screens/PhoneAndAppsScreens.kt"
+          package com.universal.carlauncher.ui.screens
+
+          import android.content.Intent
+          import android.net.Uri
+          import android.provider.ContactsContract
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.grid.GridCells
+          import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+          import androidx.compose.foundation.lazy.grid.items
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.universal.carlauncher.core.designsystem.DesignTokens
+          import com.universal.carlauncher.core.designsystem.LocalCockpitPreset
+          import com.universal.carlauncher.core.storage.LauncherStorage
+
+          data class ContactEntry(val name: String, val phone: String)
+
+          @Composable
+          fun PhoneDialerScreen(onOpenContacts: () -> Unit) {
+              val preset = LocalCockpitPreset.current
+              val context = LocalContext.current
+              var number by remember { mutableStateOf("") }
+              val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#")
+
+              Row(Modifier.fillMaxSize().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      modifier = Modifier.weight(0.55f).fillMaxHeight()
+                  ) {
+                      Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                          OutlinedTextField(
+                              value = number,
+                              onValueChange = { number = it },
+                              placeholder = { Text("أدخل رقم الهاتف للاتصال...") },
+                              modifier = Modifier.fillMaxWidth(),
+                              singleLine = true,
+                              trailingIcon = {
+                                  if (number.isNotEmpty()) {
+                                      IconButton(onClick = { number = number.dropLast(1) }) {
+                                          Icon(Icons.Default.Backspace, contentDescription = "مسح")
+                                      }
+                                  }
+                              }
+                          )
+
+                          LazyVerticalGrid(
+                              columns = GridCells.Fixed(3),
+                              verticalArrangement = Arrangement.spacedBy(6.dp),
+                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                              modifier = Modifier.weight(1f).padding(vertical = 8.dp)
+                          ) {
+                              items(keys) { k ->
+                                  Surface(
+                                      color = preset.cardElevated,
+                                      shape = RoundedCornerShape(12.dp),
+                                      modifier = Modifier.height(42.dp).clickable { number += k }
+                                  ) {
+                                      Box(contentAlignment = Alignment.Center) {
+                                          Text(k, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                                      }
+                                  }
+                              }
+                          }
+
+                          Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              Button(
+                                  onClick = {
+                                      runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                                  },
+                                  colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.StatusSuccess),
+                                  modifier = Modifier.weight(1f)
+                              ) {
+                                  Icon(Icons.Default.Call, contentDescription = null)
+                                  Spacer(Modifier.width(6.dp))
+                                  Text("اتصال الآن", fontWeight = FontWeight.Bold)
+                              }
+                              OutlinedButton(onClick = onOpenContacts, modifier = Modifier.weight(1f)) {
+                                  Icon(Icons.Default.Contacts, contentDescription = null)
+                                  Spacer(Modifier.width(6.dp))
+                                  Text("جهات الاتصال")
+                              }
+                          }
+                      }
+                  }
+
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      modifier = Modifier.weight(0.45f).fillMaxHeight()
+                  ) {
+                      Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                          Text("الوصول السريع للاتصالات", style = MaterialTheme.typography.titleLarge, color = preset.primary)
+                          Text("يرتبط هذا القسم بتطبيق الهاتف الأساسي والبلوتوث في شاشة السيارة.", color = DesignTokens.TextSecondary, fontSize = 12.sp)
+                          Spacer(Modifier.height(8.dp))
+                          Button(onClick = onOpenContacts, colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold), modifier = Modifier.fillMaxWidth()) {
+                              Text("فتح شاشة جهات الاتصال الكاملة", color = Color.Black, fontWeight = FontWeight.Bold)
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun ContactsScreen(onBackToDialer: () -> Unit) {
+              val preset = LocalCockpitPreset.current
+              val context = LocalContext.current
+              var query by remember { mutableStateOf("") }
+
+              val contacts = remember {
+                  val list = mutableListOf<ContactEntry>()
+                  runCatching {
+                      context.contentResolver.query(
+                          ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                          arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+                          null, null,
+                          ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+                      )?.use { c ->
+                          val nameIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                          val numIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                          while (c.moveToNext() && list.size < 100) {
+                              list.add(ContactEntry(c.getString(nameIdx) ?: "بدون اسم", c.getString(numIdx) ?: ""))
+                          }
+                      }
+                  }
+                  list
+              }
+
+              val filtered = contacts.filter { it.name.contains(query, ignoreCase = true) || it.phone.contains(query) }
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                      Text("جهات الاتصال (${contacts.size})", style = MaterialTheme.typography.titleLarge, color = DesignTokens.TextPrimary)
+                      Button(onClick = onBackToDialer, colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold)) {
+                          Text("لوحة الأرقام", color = Color.Black, fontWeight = FontWeight.Bold)
+                      }
+                  }
+                  OutlinedTextField(
+                      value = query,
+                      onValueChange = { query = it },
+                      placeholder = { Text("ابحث بالاسم أو الرقم...") },
+                      modifier = Modifier.fillMaxWidth(),
+                      singleLine = true
+                  )
+                  if (filtered.isEmpty()) {
+                      Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                          Text("لا توجد جهات اتصال محفوظة أو لم يتم منح صلاحية جهات الاتصال.", color = DesignTokens.TextSecondary)
+                      }
+                  } else {
+                      LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                          items(filtered) { item ->
+                              Surface(
+                                  color = preset.card.copy(alpha = 0.85f),
+                                  shape = RoundedCornerShape(12.dp),
+                                  modifier = Modifier.fillMaxWidth().clickable {
+                                      runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${item.phone}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                                  }
+                              ) {
+                                  Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                      Column {
+                                          Text(item.name, color = DesignTokens.TextPrimary, fontWeight = FontWeight.Bold)
+                                          Text(item.phone, color = DesignTokens.TextSecondary, fontSize = 12.sp)
+                                      }
+                                      Icon(Icons.Default.Call, contentDescription = null, tint = DesignTokens.StatusSuccess)
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun InstalledAppsScreen(
+              storage: LauncherStorage?,
+              showFavoritesOnly: Boolean,
+              onToggleMode: () -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              val context = LocalContext.current
+              var query by remember { mutableStateOf("") }
+              var favorites by remember { mutableStateOf(storage?.getFavoritePackages() ?: emptySet()) }
+
+              val allApps = remember {
+                  val pm = context.packageManager
+                  val intent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+                  pm.queryIntentActivities(intent, 0)
+                      .filter { it.activityInfo.packageName != context.packageName }
+                      .map { it.loadLabel(pm).toString() to it.activityInfo.packageName }
+                      .sortedBy { it.first }
+              }
+
+              val displayed = allApps.filter { (label, pkg) ->
+                  val matchesSearch = label.contains(query, ignoreCase = true)
+                  val matchesFav = !showFavoritesOnly || favorites.contains(pkg)
+                  matchesSearch && matchesFav
+              }
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                      Text(
+                          text = if (showFavoritesOnly) "شاشة التطبيقات المفضلة (${displayed.size})" else "جميع التطبيقات المثبتة (${displayed.size})",
+                          style = MaterialTheme.typography.titleLarge,
+                          color = DesignTokens.TextPrimary
+                      )
+                      Button(onClick = onToggleMode, colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold)) {
+                          Icon(Icons.Default.Star, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                          Spacer(Modifier.width(4.dp))
+                          Text(if (showFavoritesOnly) "عرض كل التطبيقات" else "عرض المفضلة فقط", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                      }
+                  }
+
+                  OutlinedTextField(
+                      value = query,
+                      onValueChange = { query = it },
+                      placeholder = { Text("ابحث عن تطبيق... (اضغط النجمة لإضافته للمفضلة)") },
+                      modifier = Modifier.fillMaxWidth(),
+                      singleLine = true
+                  )
+
+                  if (displayed.isEmpty()) {
+                      Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                          Text(
+                              text = if (showFavoritesOnly) "لم تقم بإضافة تطبيقات إلى المفضلة بعد — اضغط رمز النجمة بجانب أي تطبيق." else "لا توجد تطبيقات مطابقة للبحث.",
+                              color = DesignTokens.TextSecondary
+                          )
+                      }
+                  } else {
+                      LazyVerticalGrid(
+                          columns = GridCells.Adaptive(minSize = 155.dp),
+                          verticalArrangement = Arrangement.spacedBy(8.dp),
+                          horizontalArrangement = Arrangement.spacedBy(8.dp),
+                          modifier = Modifier.weight(1f)
+                      ) {
+                          items(displayed) { (label, pkg) ->
+                              val isFav = favorites.contains(pkg)
+                              Card(
+                                  colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                                  border = BorderStroke(1.dp, if (isFav) DesignTokens.AmberGold else preset.border),
+                                  modifier = Modifier.clickable {
+                                      context.packageManager.getLaunchIntentForPackage(pkg)?.let {
+                                          it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                          runCatching { context.startActivity(it) }
+                                      }
+                                  }
+                              ) {
+                                  Row(
+                                      Modifier.padding(10.dp).fillMaxWidth(),
+                                      horizontalArrangement = Arrangement.SpaceBetween,
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Text(label, color = DesignTokens.TextPrimary, maxLines = 1, modifier = Modifier.weight(1f), fontSize = 12.sp)
+                                      IconButton(
+                                          onClick = {
+                                              if (storage != null) favorites = storage.toggleFavoritePackage(pkg)
+                                          },
+                                          modifier = Modifier.size(26.dp)
+                                      ) {
+                                          Icon(
+                                              imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                                              contentDescription = "مفضلة",
+                                              tint = if (isFav) DesignTokens.AmberGold else DesignTokens.TextMuted,
+                                              modifier = Modifier.size(18.dp)
+                                          )
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # 14. VehicleAndTripScreens.kt (Screens #10 Vehicle Info, #11 Trip Data, #25 Device Compatibility)
+          cat << 'EOF' > "$BASE/ui/screens/VehicleAndTripScreens.kt"
+          package com.universal.carlauncher.ui.screens
+
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.Composable
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.universal.carlauncher.core.designsystem.DesignTokens
+          import com.universal.carlauncher.core.designsystem.LocalCockpitPreset
+          import com.universal.carlauncher.core.hardware.CompatibilityLevel
+          import com.universal.carlauncher.core.hardware.HardwareDiagnosticReport
+          import java.util.Locale
+
+          @Composable
+          fun VehicleInfoScreen(
+              telemetry: LiveDrivingTelemetry,
+              hardware: HardwareDiagnosticReport,
+              onOpenTripData: () -> Unit,
+              onOpenCompatibility: () -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              val metricsList = listOf(
+                  Triple("سرعة السيارة (GPS)", "${telemetry.speedKmh ?: 0} كم/س", CompatibilityLevel.SUPPORTED),
+                  Triple("سرعة دوران المحرك RPM", "يتطلب توصيل محول ELM327 OBD2", CompatibilityLevel.REQUIRES_EXTERNAL_HARDWARE),
+                  Triple("درجة حرارة المحرك Coolant", "يتطلب توصيل محول ELM327 OBD2", CompatibilityLevel.REQUIRES_EXTERNAL_HARDWARE),
+                  Triple("جهد بطارية السيارة Voltage", "يتطلب توصيل محول ELM327 OBD2", CompatibilityLevel.REQUIRES_EXTERNAL_HARDWARE),
+                  Triple("مستوى الوقود وأكواد الأعطال DTC", "يتطلب توصيل محول ELM327 OBD2", CompatibilityLevel.REQUIRES_EXTERNAL_HARDWARE)
+              )
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                      Text("معلومات السيارة وكمبيوتر OBD2", style = MaterialTheme.typography.titleLarge, color = DesignTokens.TextPrimary)
+                      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                          OutlinedButton(onClick = onOpenTripData) { Text("بيانات الرحلة", fontSize = 12.sp) }
+                          Button(onClick = onOpenCompatibility, colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.AmberGold)) {
+                              Text("تقرير توافق الهاردوير", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                          }
+                      }
+                  }
+
+                  LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
+                      items(metricsList) { (title, value, level) ->
+                          val badgeColor = when (level) {
+                              CompatibilityLevel.SUPPORTED -> DesignTokens.StatusSuccess
+                              CompatibilityLevel.REQUIRES_EXTERNAL_HARDWARE -> DesignTokens.StatusWarning
+                              CompatibilityLevel.NOT_SUPPORTED -> DesignTokens.StatusDanger
+                          }
+                          Surface(
+                              color = preset.card.copy(alpha = 0.88f),
+                              shape = RoundedCornerShape(12.dp),
+                              border = BorderStroke(1.dp, preset.border),
+                              modifier = Modifier.fillMaxWidth()
+                          ) {
+                              Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                  Column {
+                                      Text(title, color = DesignTokens.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                      Text(value, color = DesignTokens.TextSecondary, fontSize = 12.sp)
+                                  }
+                                  Text(level.badgeText, color = badgeColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun TripDataScreen(telemetry: LiveDrivingTelemetry, onResetTrip: () -> Unit) {
+              val preset = LocalCockpitPreset.current
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                      Text("شاشة بيانات وسجل الرحلات", style = MaterialTheme.typography.titleLarge, color = DesignTokens.TextPrimary)
+                      Button(onClick = onResetTrip, colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.StatusDanger)) {
+                          Icon(Icons.Default.Refresh, contentDescription = null)
+                          Spacer(Modifier.width(6.dp))
+                          Text("إعادة تعيين بيانات الرحلة الحالية", fontWeight = FontWeight.Bold)
+                      }
+                  }
+
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                      TripStatBox("المسافة المقطوعة", String.format(Locale.US, "%.2f كم", telemetry.distanceKm), Modifier.weight(1f))
+                      TripStatBox("مدة الرحلة", telemetry.durationFormatted, Modifier.weight(1f))
+                      TripStatBox("أعلى سرعة مسجلة", "${telemetry.maxSpeedKmh} كم/س", Modifier.weight(1f))
+                      TripStatBox("وقت بداية الرحلة", telemetry.tripStartTimeFormatted, Modifier.weight(1f))
+                  }
+
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      modifier = Modifier.weight(1f).fillMaxWidth()
+                  ) {
+                      Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                          Text("سجل الرحلات المحفوظة محليًا", color = preset.primary, fontWeight = FontWeight.Bold)
+                          Text("• الجلسة النشطة الآن — البداية: ${telemetry.tripStartTimeFormatted} — المسافة: ${"%.2f".format(telemetry.distanceKm)} كم", color = DesignTokens.TextPrimary, fontSize = 13.sp)
+                          Text("• يتم حساب جميع بيانات الرحلة من حساس GPS الحقيقي فقط دون أرقام افتراضية.", color = DesignTokens.TextSecondary, fontSize = 12.sp)
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          private fun TripStatBox(label: String, value: String, modifier: Modifier) {
+              val preset = LocalCockpitPreset.current
+              Card(
+                  colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                  border = BorderStroke(1.dp, preset.border),
+                  modifier = modifier
+              ) {
+                  Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                      Text(label, fontSize = 11.sp, color = DesignTokens.TextSecondary)
+                      Spacer(Modifier.height(4.dp))
+                      Text(value, fontSize = 16.sp, fontWeight = FontWeight.Black, color = preset.primary)
+                  }
+              }
+          }
+
+          @Composable
+          fun DeviceCompatibilityScreen(hardware: HardwareDiagnosticReport) {
+              val preset = LocalCockpitPreset.current
+              val matrix = hardware.toCapabilityMatrix()
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                      Text("إدارة توافق الأجهزة (${hardware.deviceModel})", style = MaterialTheme.typography.titleLarge, color = DesignTokens.TextPrimary)
+                      Text(hardware.androidVersion, color = preset.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                  }
+
+                  LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
+                      items(matrix) { item ->
+                          val color = when (item.level) {
+                              CompatibilityLevel.SUPPORTED -> DesignTokens.StatusSuccess
+                              CompatibilityLevel.REQUIRES_EXTERNAL_HARDWARE -> DesignTokens.StatusWarning
+                              CompatibilityLevel.NOT_SUPPORTED -> DesignTokens.StatusDanger
+                          }
+                          Surface(
+                              color = preset.card.copy(alpha = 0.88f),
+                              shape = RoundedCornerShape(12.dp),
+                              border = BorderStroke(1.dp, preset.border),
+                              modifier = Modifier.fillMaxWidth()
+                          ) {
+                              Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                  Column(Modifier.weight(1f)) {
+                                      Text(item.nameAr, color = DesignTokens.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                      Text(item.detailsAr, color = DesignTokens.TextSecondary, fontSize = 11.sp)
+                                  }
+                                  Surface(color = color.copy(alpha = 0.15f), shape = RoundedCornerShape(50), border = BorderStroke(1.dp, color)) {
+                                      Text(item.level.badgeText, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # 15. IslamicSuiteScreens.kt (Screens #12 Islamic Hub, #13 Prayer Times, #14 Adhkar, #15 Tasbeeh, #16 Qibla, #17 Hijri Calendar)
+          cat << 'EOF' > "$BASE/ui/screens/IslamicSuiteScreens.kt"
+          package com.universal.carlauncher.ui.screens
+
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.grid.GridCells
+          import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+          import androidx.compose.foundation.lazy.grid.items
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.universal.carlauncher.core.designsystem.DesignTokens
+          import com.universal.carlauncher.core.designsystem.LocalCockpitPreset
+          import com.universal.carlauncher.core.storage.LauncherStorage
+          import com.universal.carlauncher.domain.islamic.DailyPrayerSchedule
+          import com.universal.carlauncher.ui.navigation.AppScreenRoute
+          import kotlin.math.cos
+          import kotlin.math.sin
+
+          @Composable
+          fun IslamicHubScreen(
+              prayers: DailyPrayerSchedule,
+              hijriDate: String,
+              onNavigateTo: (AppScreenRoute) -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              val subScreens = listOf(
+                  Triple(AppScreenRoute.PRAYER_TIMES, "مواقيت الصلاة والأذان", "القادمة: ${prayers.nextPrayerName} (${prayers.nextPrayerTime})"),
+                  Triple(AppScreenRoute.ADHKAR, "مكتبة الأذكار والأدعية", "أذكار الصباح والمساء وركوب السيارة"),
+                  Triple(AppScreenRoute.TASBEEH, "المسبحة الإلكترونية", "عداد تسبيح مع تحديد الهدف والسجل"),
+                  Triple(AppScreenRoute.QIBLA, "البوصلة واتجاه القبلة", "زاوية القبلة: ${prayers.qiblaDegrees}° جنوب شرق"),
+                  Triple(AppScreenRoute.HIJRI_CALENDAR, "التقويم الهجري", hijriDate)
+              )
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Text("القسم الإسلامي المتكامل (يعمل Offline بالكامل)", style = MaterialTheme.typography.titleLarge, color = DesignTokens.TextPrimary)
+                  LazyVerticalGrid(
+                      columns = GridCells.Adaptive(minSize = 210.dp),
+                      verticalArrangement = Arrangement.spacedBy(8.dp),
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      modifier = Modifier.weight(1f)
+                  ) {
+                      items(subScreens) { (route, title, sub) ->
+                          Card(
+                              colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                              border = BorderStroke(1.dp, preset.border),
+                              shape = RoundedCornerShape(DesignTokens.RadiusM),
+                              modifier = Modifier.clickable { onNavigateTo(route) }
+                          ) {
+                              Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                      Icon(route.icon, contentDescription = null, tint = preset.primary)
+                                      Text(title, fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary, fontSize = 14.sp)
+                                  }
+                                  Text(sub, color = DesignTokens.TextSecondary, fontSize = 12.sp)
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun PrayerTimesScreen(prayers: DailyPrayerSchedule, storage: LauncherStorage?) {
+              val preset = LocalCockpitPreset.current
+              var method by remember { mutableStateOf(storage?.prayerCalculationMethod ?: "الهيئة المصرية العامة للمساحة") }
+              var madhhab by remember { mutableStateOf(storage?.asrMadhhab ?: "جمهور الفقهاء") }
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.primary),
+                      modifier = Modifier.fillMaxWidth()
+                  ) {
+                      Row(Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                          Column {
+                              Text("الصلاة القادمة: ${prayers.nextPrayerName}", style = MaterialTheme.typography.headlineMedium, color = preset.primary)
+                              Text("موعد الأذان: ${prayers.nextPrayerTime} • ${prayers.remainingCountdownText}", color = DesignTokens.TextPrimary)
+                          }
+                          Text("الشروق: ${prayers.sunrise}", color = DesignTokens.AmberGold, fontWeight = FontWeight.Bold)
+                      }
+                  }
+
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                      listOf(
+                          "الفجر" to prayers.fajr,
+                          "الظهر" to prayers.dhuhr,
+                          "العصر" to prayers.asr,
+                          "المغرب" to prayers.maghrib,
+                          "العشاء" to prayers.isha
+                      ).forEach { (name, time) ->
+                          val active = prayers.nextPrayerName == name
+                          Card(
+                              colors = CardDefaults.cardColors(containerColor = if (active) preset.primary.copy(alpha = 0.25f) else preset.card.copy(alpha = 0.88f)),
+                              border = BorderStroke(1.dp, if (active) preset.primary else preset.border),
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              Column(Modifier.padding(12.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                  Text(name, fontWeight = FontWeight.Bold, color = if (active) preset.primary else DesignTokens.TextSecondary)
+                                  Spacer(Modifier.height(4.dp))
+                                  Text(time, fontSize = 15.sp, fontWeight = FontWeight.Black, color = DesignTokens.TextPrimary)
+                              }
+                          }
+                      }
+                  }
+
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                      FilterChip(
+                          selected = true,
+                          onClick = {
+                              method = if (method.contains("المصرية")) "رابطة العالم الإسلامي" else "الهيئة المصرية العامة للمساحة"
+                              storage?.prayerCalculationMethod = method
+                          },
+                          label = { Text("طريقة الحساب: $method") }
+                      )
+                      FilterChip(
+                          selected = true,
+                          onClick = {
+                              madhhab = if (madhhab.contains("جمهور")) "المذهب الحنفي" else "جمهور الفقهاء"
+                              storage?.asrMadhhab = madhhab
+                          },
+                          label = { Text("مذهب العصر: $madhhab") }
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          fun AdhkarScreen() {
+              val preset = LocalCockpitPreset.current
+              var selectedCategory by remember { mutableStateOf("أذكار الصباح") }
+              val categories = listOf("أذكار الصباح", "أذكار المساء", "أذكار بعد الصلاة", "أدعية السيارة والسفر")
+
+              val contentMap = mapOf(
+                  "أذكار الصباح" to listOf(
+                      "«أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ، وَالْحَمْدُ لِلَّهِ، لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ، لَهُ الْمُلْكُ وَلَهُ الْحَمْدُ وَهُوَ عَلَى كُلِّ شَيْءٍ قَدِيرٌ».",
+                      "«اللَّهُمَّ بِكَ أَصْبَحْنَا، وَبِكَ أَمْسَيْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ وَإِلَيْكَ النُّشُورُ»."
+                  ),
+                  "أذكار المساء" to listOf(
+                      "«أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ، وَالْحَمْدُ لِلَّهِ، لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ».",
+                      "«أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ» (ثلاث مرات)."
+                  ),
+                  "أذكار بعد الصلاة" to listOf(
+                      "«أَسْتَغْفِرُ اللَّهَ (ثلاثًا) اللَّهُمَّ أَنْتَ السَّلَامُ وَمِنْكَ السَّلَامُ تَبَارَكْتَ يَا ذَا الْجَلَالِ وَالْإِكْرَامِ».",
+                      "سبحان الله (33)، الحمد لله (33)، الله أكبر (33)، تمام المائة: لا إله إلا الله وحده لا شريك له."
+                  ),
+                  "أدعية السيارة والسفر" to listOf(
+                      "«بِسْمِ اللَّهِ، الْحَمْدُ لِلَّهِ، سُبْحَانَ الَّذِي سَخَّرَ لَنَا هَذَا وَمَا كُنَّا لَهُ مُقْرِنِينَ وَإِنَّا إِلَى رَبِّنَا لَمُنْقَلِبُونَ».",
+                      "«اللَّهُمَّ إِنَّا نَسْأَلُكَ فِي سَفَرِنَا هَذَا الْبِرَّ وَالتَّقْوَى، وَمِنَ الْعَمَلِ مَا تَرْضَى، اللَّهُمَّ هَوِّنْ عَلَيْنَا سَفَرَنَا هَذَا»."
+                  )
+              )
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                      categories.forEach { cat ->
+                          FilterChip(selected = selectedCategory == cat, onClick = { selectedCategory = cat }, label = { Text(cat) })
+                      }
+                  }
+                  LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                      items(contentMap[selectedCategory].orEmpty()) { dhikr ->
+                          Surface(
+                              color = preset.card.copy(alpha = 0.88f),
+                              shape = RoundedCornerShape(14.dp),
+                              border = BorderStroke(1.dp, preset.border),
+                              modifier = Modifier.fillMaxWidth()
+                          ) {
+                              Text(dhikr, color = DesignTokens.TextPrimary, fontSize = 15.sp, lineHeight = 25.sp, modifier = Modifier.padding(16.dp))
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun TasbeehScreen(storage: LauncherStorage?) {
+              val preset = LocalCockpitPreset.current
+              var count by remember { mutableIntStateOf(storage?.tasbeehCount ?: 0) }
+              var target by remember { mutableIntStateOf(storage?.tasbeehTarget ?: 100) }
+              var total by remember { mutableIntStateOf(storage?.totalLifetimeTasbeeh ?: 0) }
+
+              Row(Modifier.fillMaxSize().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.90f)),
+                      border = BorderStroke(1.5.dp, preset.primary),
+                      modifier = Modifier.weight(0.55f).fillMaxHeight()
+                  ) {
+                      Column(
+                          Modifier.fillMaxSize().padding(16.dp),
+                          horizontalAlignment = Alignment.CenterHorizontally,
+                          verticalArrangement = Arrangement.SpaceAround
+                      ) {
+                          Text("المسبحة الإلكترونية", style = MaterialTheme.typography.titleLarge, color = preset.primary)
+                          Surface(
+                              shape = CircleShape,
+                              color = DesignTokens.AmberGold,
+                              modifier = Modifier.size(130.dp).clickable {
+                                  count++
+                                  total++
+                                  storage?.tasbeehCount = count
+                                  storage?.totalLifetimeTasbeeh = total
+                              }
+                          ) {
+                              Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                  Text("$count", fontSize = 40.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                                  Text("اضغط للتسبيح", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                              }
+                          }
+                          Text("الهدف الحالي: $target • الإجمالي الكلي: $total", color = DesignTokens.TextSecondary)
+                      }
+                  }
+
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      modifier = Modifier.weight(0.45f).fillMaxHeight()
+                  ) {
+                      Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                          Text("تحديد هدف التسبيح وإدارة السجل", style = MaterialTheme.typography.titleMedium, color = DesignTokens.TextPrimary)
+                          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              listOf(33, 100, 1000).forEach { t ->
+                                  FilterChip(
+                                      selected = target == t,
+                                      onClick = { target = t; storage?.tasbeehTarget = t },
+                                      label = { Text("$t") }
+                                  )
+                              }
+                          }
+                          OutlinedButton(
+                              onClick = { count = 0; storage?.tasbeehCount = 0 },
+                              modifier = Modifier.fillMaxWidth()
+                          ) { Text("تصفير العداد الحالي") }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun QiblaCompassScreen(qiblaDegrees: Int, currentBearing: Int?) {
+              val preset = LocalCockpitPreset.current
+              val heading = currentBearing ?: 0
+
+              Row(Modifier.fillMaxSize().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      modifier = Modifier.weight(0.5f).fillMaxHeight()
+                  ) {
+                      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          Canvas(Modifier.size(180.dp)) {
+                              val r = size.minDimension / 2f
+                              val c = Offset(size.width / 2f, size.height / 2f)
+                              drawCircle(color = preset.border, radius = r, center = c, style = Stroke(4.dp.toPx()))
+                              val qRad = Math.toRadians((qiblaDegrees - 90).toDouble())
+                              val qEnd = Offset(c.x + (r * 0.8f * cos(qRad)).toFloat(), c.y + (r * 0.8f * sin(qRad)).toFloat())
+                              drawLine(color = DesignTokens.AmberGold, start = c, end = qEnd, strokeWidth = 5.dp.toPx())
+                          }
+                          Text("${qiblaDegrees}°", fontSize = 26.sp, fontWeight = FontWeight.Black, color = DesignTokens.AmberGold)
+                      }
+                  }
+
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = preset.card.copy(alpha = 0.88f)),
+                      border = BorderStroke(1.dp, preset.border),
+                      modifier = Modifier.weight(0.5f).fillMaxHeight()
+                  ) {
+                      Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center) {
+                          Text("بوصلة السيارة واتجاه القبلة", style = MaterialTheme.typography.titleLarge, color = preset.primary)
+                          Spacer(Modifier.height(8.dp))
+                          Text("• زاوية القبلة من موقعك: $qiblaDegrees° (جنوب شرق)", color = DesignTokens.TextPrimary)
+                          Text("• اتجاه السيارة الحالي: $heading°", color = DesignTokens.TextSecondary)
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun HijriCalendarScreen(hijriDate: String, gregorianDate: String) {
+              val preset = LocalCockpitPreset.current
+              val days = (1..30).toList()
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                      Text("التقويم الهجري: $hijriDate", style = MaterialTheme.typography.titleLarge, color = preset.primary)
+                      Text("الموافق: $gregorianDate", color = DesignTokens.TextSecondary, fontSize = 12.sp)
+                  }
+                  LazyVerticalGrid(
+                      columns = GridCells.Fixed(7),
+                      verticalArrangement = Arrangement.spacedBy(6.dp),
+                      horizontalArrangement = Arrangement.spacedBy(6.dp),
+                      modifier = Modifier.weight(1f)
+                  ) {
+                      items(days) { d ->
+                          Surface(
+                              color = if (d == 14) preset.primary.copy(alpha = 0.3f) else preset.card.copy(alpha = 0.85f),
+                              shape = RoundedCornerShape(10.dp),
+                              border = BorderStroke(1.dp, if (d == 14) preset.primary else preset.border)
+                          ) {
+                              Box(Modifier.padding(10.dp), contentAlignment = Alignment.Center) {
+                                  Text("$d", fontWeight = FontWeight.Bold, color = DesignTokens.TextPrimary)
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # 16. SettingsSuiteScreens.kt (Screens #19 Settings Main, #20 Sub-pages, #21 UI Customization, #22 Theme Selector, #23 Shortcuts Manager, #24 App Info)
+          cat << 'EOF' > "$BASE/ui/screens/SettingsSuiteScreens.kt"
+          package com.universal.carlauncher.ui.screens
+
+          import android.content.Intent
+          import android.provider.Settings
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.grid.GridCells
+          import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+          import androidx.compose.foundation.lazy.grid.items
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.universal.carlauncher.core.designsystem.CockpitThemePreset
+          import com.universal.carlauncher.core.designsystem.DesignTokens
+          import com.universal.carlauncher.core.designsystem.LocalCockpitPreset
+          import com.universal.carlauncher.core.storage.LauncherStorage
+          import com.universal.carlauncher.ui.navigation.AppScreenRoute
+          import com.universal.carlauncher.ui.navigation.SettingsSubPage
+
+          @Composable
+          fun SettingsMainScreen(
+              onOpenSubPage: (SettingsSubPage) -> Unit,
+              onNavigateTo: (AppScreenRoute) -> Unit
+          ) {
+              val preset = LocalCockpitPreset.current
+              val directScreens = listOf(
+                  Triple(AppScreenRoute.UI_CUSTOMIZATION, "تخصيص الواجهة الرئيسية", Icons.Default.DashboardCustomize),
+                  Triple(AppScreenRoute.THEME_SELECTOR, "اختيار الثيمات والهوية البصرية", Icons.Default.Palette),
+                  Triple(AppScreenRoute.SHORTCUTS_MANAGER, "إدارة الاختصارات السريعة", Icons.Default.AppShortcut),
+                  Triple(AppScreenRoute.DEVICE_COMPATIBILITY, "تقرير توافق الأجهزة", Icons.Default.Memory),
+                  Triple(AppScreenRoute.APP_INFO, "معلومات وإصدار التطبيق", Icons.Default.Info)
+              )
+
+              Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Text("لوحة الإعدادات الرئيسية الشاملة", style = MaterialTheme.typography.titleLarge, color = DesignTokens.TextPrimary)
+
+                  LazyVerticalGrid(
+                      columns = GridCells.Adaptive(minSize = 200.dp),
+                      verticalArrangement = Arrangement.spacedBy(8
+pose.material3.Typography
           import androidx.compose.material3.darkColorScheme
           import androidx.compose.runtime.Composable
           import androidx.compose.runtime.CompositionLocalProvider
